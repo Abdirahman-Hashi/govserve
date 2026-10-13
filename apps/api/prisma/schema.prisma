@@ -435,6 +435,8 @@ model Application {
   // Keyset pagination (FR-110/FR-111): (createdAt DESC, id DESC) within the caller's scope.
   @@index([applicantId, createdAt(sort: Desc), id(sort: Desc)])
   @@index([departmentId, createdAt(sort: Desc), id(sort: Desc)])
+  // Partial reference search (Phase 08, created in the search migration).
+  @@index([referenceNo(ops: raw("gin_trgm_ops"))], type: Gin, map: "application_referenceNo_trgm_idx")
   @@index([status, updatedAt])
   @@map("application")
 }
@@ -708,6 +710,8 @@ model PaymentEvent {
   payment Payment @relation(fields: [paymentId], references: [id])
 
   @@index([paymentId, at])
+  // Report date ranges (Phase 09: report_money_movement).
+  @@index([at])
   @@map("payment_event")
 }
 

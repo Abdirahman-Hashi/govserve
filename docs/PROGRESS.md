@@ -13,7 +13,7 @@ Tick a phase only when lint, typecheck and tests are green and the phase's accep
 | 06 | Officer work queues + review workflow | 04, 05 | [x] |
 | 07 | Email notifications | 06 | [x] |
 | 08 | Search + application/transaction history | 06 | [x] |
-| 09 | Management dashboard | 05, 06 | [ ] |
+| 09 | Management dashboard | 05, 06 | [x] |
 | 10 | Audit trail hardening + OpenAPI polish | 02–09 | [ ] |
 | 11 | Production Docker, CI/CD, cloud deploy | 10 | [ ] |
 | 12 | Security review, load test, UAT fixes | 11 | [ ] |
@@ -47,3 +47,6 @@ Follow-ups: choose the production SMTP provider; operator view/alert for dead-le
 
 **Phase 08 (2026-10-14):** Citizen history (`GET /applications` now keyset-paged with filters, new `GET /payments` with receipts) and department-scoped staff search over applications and payments (reference via trigram, receipt and certificate numbers, names via 'simple' full-text prefixes, national ID and phone via blind indexes only, status, service, dates, channel, cents range). Staff criteria are sent in POST bodies so PII never appears in URLs. Supervisor CSV export is streamed, capped at 50,000 rows, formula-safe and audited without identifying values. 100k-row EXPLAIN ANALYZE plans are in docs/perf/search-plans.md (no sequential scans; IN…UNION rewrite for name and national ID). Also fixed a Phase 04 race where a stale application read could overwrite a just-saved copy count.
 Follow-ups: decide whether staff searches by national ID or phone should be audited as reads (Phase 10); form phone answers have no blind index (applicant account phone only); web entry bundle about 177 KB gz.
+
+**Phase 09 (2026-10-14):** Management dashboard for supervisors (own department, enforced server-side) and admins (all, or one department), from live SQL views over the payment ledger and applications (ADR-0009). It shows collections (confirmed − refunds − reversals, dated when they happen) by day, service and channel; outstanding balances; volumes; median and p90 submit→decision; SLA compliance; overdue counts; and pending work per officer and department. Each KPI drills down to its list with an audited CSV export. Web uses Recharts 3.10.1 in a lazy chunk. The reconciliation test matches direct table sums to the cent.
+Follow-ups: chart geometry uses `centsForChart` (accepted as display-only, exact to 2^53 cents); move to materialized views with a refresh job if volume grows; web entry bundle about 161 KB gz.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { centsToString, formatUsd, parseCents } from './money.js';
+import { centsForChart, centsToString, formatUsd, parseCents } from './money.js';
 
 describe('money', () => {
   it('should round-trip cents through strings when serialising', () => {
@@ -20,5 +20,13 @@ describe('money', () => {
     [-2550n, '-$25.50'],
   ])('should format %s cents as %s', (cents, expected) => {
     expect(formatUsd(cents)).toBe(expected);
+  });
+});
+
+describe('centsForChart', () => {
+  it('should convert exactly within the safe range and refuse beyond it', () => {
+    expect(centsForChart(123456n)).toBe(123456);
+    expect(centsForChart(-5n)).toBe(-5);
+    expect(() => centsForChart(BigInt(Number.MAX_SAFE_INTEGER) + 1n)).toThrow(RangeError);
   });
 });

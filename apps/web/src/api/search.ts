@@ -22,9 +22,7 @@ function clean<T extends object>(filters: T): Partial<T> {
 }
 
 function query(filters: object, cursor: string | null): string {
-  const params = new URLSearchParams(
-    clean({ ...filters, ...(cursor && { cursor }) }),
-  );
+  const params = new URLSearchParams(clean({ ...filters, ...(cursor && { cursor }) }));
   const s = params.toString();
   return s ? `?${s}` : '';
 }

@@ -320,3 +320,15 @@ Legal sign-off: O-5.
   `application_data.subjectNationalIdBidx`, `user.phoneBidx`).
 - Plans on 100,000 seeded rows: docs/perf/search-plans.md.
 
+## Reporting views (Phase 09, ADR-0009)
+- `report_money_movement`: one row per money movement from `payment_event`:
+  - CONFIRMED (+): a payment entering CONFIRMED
+  - REVERSED (−): a card reversal
+  - REFUNDED (−): a `REFUND_COMPLETED` event, using the refund's amount and the original payment's channel
+
+  Columns: eventId, occurredAt, kind, paymentId, applicationId, referenceNo, departmentId, serviceId, serviceCode,
+  serviceName, channel, amountCents (bigint). Net collections = Σ CONFIRMED − Σ REFUNDED − Σ REVERSED, which equals
+  Σ currently CONFIRMED payments − Σ completed refunds. Index `payment_event (at)` serves date ranges.
+- `report_application`: one row per non-draft application, with service, status, timestamps, SLA fields, assignee,
+  assessed and confirmed-paid cents, and `outstandingCents` (AWAITING_PAYMENT only).
+

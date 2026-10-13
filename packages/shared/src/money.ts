@@ -27,3 +27,15 @@ export function formatUsd(cents: Cents): string {
   const rest = (abs % 100n).toString().padStart(2, '0');
   return `${negative ? '-' : ''}$${dollars}.${rest}`;
 }
+
+/**
+ * Cents as a plain number for chart geometry only (bar heights, axis positions). Exact up to
+ * 2^53 cents; anything larger throws rather than silently losing precision. Never use the result
+ * for arithmetic or display — label values with `formatUsd` on the bigint.
+ */
+export function centsForChart(cents: Cents): number {
+  if (cents > BigInt(Number.MAX_SAFE_INTEGER) || cents < BigInt(Number.MIN_SAFE_INTEGER)) {
+    throw new RangeError('Amount too large to chart exactly');
+  }
+  return Number(cents);
+}

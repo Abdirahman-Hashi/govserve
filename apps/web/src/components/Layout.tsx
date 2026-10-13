@@ -29,12 +29,18 @@ function navFor(role: Role | null): NavItem[] {
         { to: '/officer/search', label: t.nav.search },
         { to: '/officer/payments', label: t.nav.payments },
         { to: '/officer/cash', label: t.nav.cashDesk },
-        ...(role === 'SUPERVISOR' ? [{ to: '/officer/refunds', label: t.nav.refunds }] : []),
+        ...(role === 'SUPERVISOR'
+          ? [
+              { to: '/officer/dashboard', label: t.nav.dashboard },
+              { to: '/officer/refunds', label: t.nav.refunds },
+            ]
+          : []),
         { to: '/account/profile', label: t.nav.profile },
       ];
     case 'ADMIN':
       return [
         { to: '/admin', label: t.nav.admin, end: true },
+        { to: '/admin/dashboard', label: t.nav.dashboard },
         { to: '/admin/staff', label: t.nav.staff },
         { to: '/admin/services', label: t.nav.catalogueAdmin },
         { to: '/admin/config', label: t.nav.configuration },

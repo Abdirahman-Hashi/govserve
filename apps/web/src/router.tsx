@@ -195,6 +195,32 @@ export const routes: RouteObject[] = [
             ),
           },
           {
+            path: 'dashboard',
+            element: (
+              <RequireRole roles={['SUPERVISOR']}>
+                <Outlet />
+              </RequireRole>
+            ),
+            children: [
+              {
+                index: true,
+                ...page(() =>
+                  import('./routes/officer/DashboardPage').then((m) => ({
+                    Component: m.DashboardPage,
+                  })),
+                ),
+              },
+              {
+                path: 'details',
+                ...page(() =>
+                  import('./routes/officer/DashboardDetailsPage').then((m) => ({
+                    Component: m.DashboardDetailsPage,
+                  })),
+                ),
+              },
+            ],
+          },
+          {
             path: 'refunds',
             element: (
               <RequireRole roles={['SUPERVISOR']}>
@@ -271,6 +297,22 @@ export const routes: RouteObject[] = [
             ...page(() =>
               import('./routes/admin/VersionEditorPage').then((m) => ({
                 Component: m.VersionEditorPage,
+              })),
+            ),
+          },
+          {
+            path: 'dashboard',
+            ...page(() =>
+              import('./routes/admin/AdminDashboardPage').then((m) => ({
+                Component: m.AdminDashboardPage,
+              })),
+            ),
+          },
+          {
+            path: 'dashboard/details',
+            ...page(() =>
+              import('./routes/admin/AdminDashboardDetailsPage').then((m) => ({
+                Component: m.AdminDashboardDetailsPage,
               })),
             ),
           },

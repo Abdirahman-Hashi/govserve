@@ -18,6 +18,7 @@ import { JobsModule } from './jobs/jobs.module';
 import { NotificationJobsModule } from './notifications/notification-jobs.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PaymentsModule } from './payments/payments.module';
+import { ReportsModule } from './reports/reports.module';
 import { ReviewModule } from './review/review.module';
 import { SearchModule } from './search/search.module';
 import { UsersModule } from './users/users.module';
@@ -54,6 +55,7 @@ import { StorageModule } from './storage/storage.module';
     CertificatesModule,
     ReviewModule,
     SearchModule,
+    ReportsModule,
     JobsModule,
     NotificationJobsModule,
     HealthModule,
