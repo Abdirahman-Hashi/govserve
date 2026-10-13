@@ -2,9 +2,16 @@ import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ErrorEnvelopeFilter } from './common/filters/error-envelope.filter';
-import { DenyByDefaultGuard } from './common/guards/deny-by-default.guard';
+import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
+import { RolesGuard } from './common/guards/roles.guard';
 import { APP_CONFIG, type AppConfig, ConfigModule } from './config/config.module';
+import { AuditModule } from './audit/audit.module';
+import { AuthModule } from './auth/auth.module';
+import { CryptoModule } from './crypto/crypto.module';
 import { HealthModule } from './health/health.module';
+import { JobsModule } from './jobs/jobs.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { UsersModule } from './users/users.module';
 import { LoggerModule } from './logging/logger.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
@@ -16,16 +23,26 @@ import { RedisModule } from './redis/redis.module';
     // In-memory store for now; Redis-backed storage when the API runs on more than one instance.
     ThrottlerModule.forRootAsync({
       inject: [APP_CONFIG],
-      useFactory: (config: AppConfig) => [{ ttl: 60_000, limit: config.RATE_LIMIT_PER_MINUTE }],
+      useFactory: (config: AppConfig) => ({
+        throttlers: [{ ttl: 60_000, limit: config.RATE_LIMIT_PER_MINUTE }],
+        skipIf: () => !config.RATE_LIMIT_ENABLED,
+      }),
     }),
     PrismaModule,
     RedisModule,
+    CryptoModule,
+    AuditModule,
+    NotificationsModule,
+    AuthModule,
+    UsersModule,
+    JobsModule,
     HealthModule,
   ],
   providers: [
-    // Order matters: rate limiting runs before the authentication check.
+    // Order matters: rate limiting, then authentication, then the role decision (deny by default).
     { provide: APP_GUARD, useClass: ThrottlerGuard },
-    { provide: APP_GUARD, useClass: DenyByDefaultGuard },
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_FILTER, useClass: ErrorEnvelopeFilter },
   ],
 })

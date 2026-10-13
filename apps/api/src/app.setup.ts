@@ -1,4 +1,5 @@
 import { type INestApplication, RequestMethod, ValidationPipe } from '@nestjs/common';
+import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import { APP_CONFIG, type AppConfig } from './config/config.module';
@@ -23,6 +24,7 @@ export function configureApp(app: INestApplication): void {
 
   app.useLogger(app.get(Logger));
   app.use(helmet());
+  app.use(cookieParser());
   app.enableCors({
     origin: config.CORS_ORIGINS,
     credentials: true,

@@ -2,12 +2,207 @@
 // Partial unique indexes, check constraints, triggers and grants live in SQL migrations (ADR-0002).
 
 generator client {
-  provider     = "prisma-client"
-  output       = "../src/generated/prisma"
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
   moduleFormat        = "cjs"
   importFileExtension = ""
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+// ─── Identity and access (DATA_MODEL §1) ────────────────────────────────────
+
+enum Role {
+  CITIZEN
+  OFFICER
+  SUPERVISOR
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  LOCKED
+  DEACTIVATED
+}
+
+enum NationalIdType {
+  NATIONAL_ID
+  PASSPORT
+}
+
+enum OtpPurpose {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+  STAFF_DEVICE
+  CHANGE_EMAIL
+}
+
+enum ActorType {
+  USER
+  SYSTEM
+  PUBLIC
+}
+
+model Department {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  code      String   @unique
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  users       User[]
+  invitations StaffInvitation[]
+
+  @@map("department")
+}
+
+model User {
+  id               String     @id @default(uuid(7)) @db.Uuid
+  email            String     @unique @db.Citext
+  emailVerifiedAt  DateTime?  @db.Timestamptz(3)
+  passwordHash     String?
+  fullName         String
+  phoneEnc         Bytes?
+  phoneBidx        String?
+  role             Role
+  departmentId     String?    @db.Uuid
+  status           UserStatus @default(ACTIVE)
+  failedLoginCount Int        @default(0)
+  failedLoginAt    DateTime?  @db.Timestamptz(3)
+  lockedUntil      DateTime?  @db.Timestamptz(3)
+  lastLoginAt      DateTime?  @db.Timestamptz(3)
+  version          Int        @default(0)
+  createdAt        DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime   @updatedAt @db.Timestamptz(3)
+
+  department      Department?       @relation(fields: [departmentId], references: [id])
+  citizenProfile  CitizenProfile?
+  refreshTokens   RefreshToken[]
+  otpCodes        OtpCode[]
+  trustedDevices  TrustedDevice[]
+  invitationsSent StaffInvitation[] @relation("InvitedBy")
+
+  @@index([role, departmentId])
+  @@index([phoneBidx])
+  @@index([emailVerifiedAt, createdAt])
+  @@map("user")
+}
+
+model CitizenProfile {
+  userId         String          @id @db.Uuid
+  nationalIdType NationalIdType?
+  nationalIdEnc  Bytes?
+  nationalIdBidx String?
+  dateOfBirthEnc Bytes?
+  createdAt      DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime        @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // unique(nationalIdBidx) WHERE NOT NULL is a partial index in the migration SQL.
+  @@map("citizen_profile")
+}
+
+model RefreshToken {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  userId        String    @db.Uuid
+  familyId      String    @db.Uuid
+  tokenHash     String    @unique
+  expiresAt     DateTime  @db.Timestamptz(3)
+  rotatedAt     DateTime? @db.Timestamptz(3)
+  revokedAt     DateTime? @db.Timestamptz(3)
+  revokedReason String?
+  ip            String?
+  userAgent     String?
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_token")
+}
+
+model OtpCode {
+  id          String     @id @default(uuid(7)) @db.Uuid
+  userId      String?    @db.Uuid
+  email       String     @db.Citext
+  purpose     OtpPurpose
+  codeHash    String
+  // For STAFF_DEVICE: hash of the device the challenge was issued to; for CHANGE_EMAIL: unused.
+  contextHash String?
+  expiresAt   DateTime   @db.Timestamptz(3)
+  attempts    Int        @default(0)
+  consumedAt  DateTime?  @db.Timestamptz(3)
+  createdAt   DateTime   @default(now()) @db.Timestamptz(3)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([email, purpose, consumedAt])
+  @@map("otp_code")
+}
+
+model StaffInvitation {
+  id           String    @id @default(uuid(7)) @db.Uuid
+  email        String    @db.Citext
+  fullName     String
+  role         Role
+  departmentId String?   @db.Uuid
+  tokenHash    String    @unique
+  invitedById  String?   @db.Uuid
+  expiresAt    DateTime  @db.Timestamptz(3)
+  acceptedAt   DateTime? @db.Timestamptz(3)
+  revokedAt    DateTime? @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+
+  department Department? @relation(fields: [departmentId], references: [id])
+  invitedBy  User?       @relation("InvitedBy", fields: [invitedById], references: [id])
+
+  @@index([email])
+  @@map("staff_invitation")
+}
+
+model TrustedDevice {
+  id           String    @id @default(uuid(7)) @db.Uuid
+  userId       String    @db.Uuid
+  deviceIdHash String
+  lastSeenAt   DateTime  @default(now()) @db.Timestamptz(3)
+  expiresAt    DateTime  @db.Timestamptz(3)
+  revokedAt    DateTime? @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, deviceIdHash])
+  @@map("trusted_device")
+}
+
+// ─── Audit (DATA_MODEL §6). Hash chain and append-only grants: Phase 10. ────
+
+model AuditLog {
+  id           BigInt    @id @default(autoincrement())
+  occurredAt   DateTime  @default(now()) @db.Timestamptz(3)
+  actorId      String?   @db.Uuid
+  actorRole    Role?
+  actorType    ActorType
+  action       String
+  entityType   String
+  entityId     String
+  departmentId String?   @db.Uuid
+  before       Json?
+  after        Json?
+  ip           String?
+  userAgent    String?
+  requestId    String?
+  prevHash     Bytes?
+  hash         Bytes?
+
+  @@index([entityType, entityId, occurredAt])
+  @@index([actorId, occurredAt])
+  @@index([departmentId, occurredAt])
+  @@index([action])
+  @@map("audit_log")
 }

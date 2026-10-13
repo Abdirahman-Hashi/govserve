@@ -16,3 +16,4 @@ allowBuilds:
   '@parcel/watcher': false
   '@scarf/scarf': false
   unrs-resolver: true
+  argon2: true

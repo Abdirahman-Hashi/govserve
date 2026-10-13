@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { RedisContainer, type StartedRedisContainer } from '@testcontainers/redis';
@@ -43,6 +44,7 @@ export function testEnv(
   return {
     NODE_ENV: 'test',
     LOG_LEVEL: 'silent',
+    RATE_LIMIT_ENABLED: 'false',
     CORS_ORIGINS: 'http://localhost:5173',
     DATABASE_URL: infra.databaseUrl,
     REDIS_URL: infra.redisUrl,
@@ -56,5 +58,11 @@ export function testEnv(
     SMTP_FROM: 'GovServe <no-reply@govserve.local>',
     CLAMAV_HOST: 'localhost',
     CLAMAV_PORT: '3310',
+    WEB_ORIGIN: 'http://localhost:5173',
+    // Test runs use plain-http supertest; Secure cookies are still set and read by the API.
+    COOKIE_SECURE: 'true',
+    JWT_ACCESS_SECRET: randomBytes(32).toString('base64'),
+    PII_KEYS: `test1:${randomBytes(32).toString('base64')}`,
+    BLIND_INDEX_KEY: randomBytes(32).toString('base64'),
   };
 }

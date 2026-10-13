@@ -54,8 +54,10 @@ describe('Health and readiness (integration)', () => {
     expect(body.error.requestId).toBe(res.headers['x-request-id']);
   });
 
-  it('should return 503 when Redis goes down', async () => {
-    await infra.redis.stop();
+  it('should return 503 when Redis stops responding', async () => {
+    // Pause all Redis clients for longer than the 2 s readiness probe, then let it recover
+    // (stopping the container would leave BullMQ reconnecting forever on shutdown).
+    await infra.redis.exec(['redis-cli', 'CLIENT', 'PAUSE', '3000', 'ALL']);
     const res = await request(http()).get('/ready').expect(503);
     expect(HealthResponseSchema.parse(res.body)).toMatchObject({
       status: 'error',

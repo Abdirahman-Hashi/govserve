@@ -11,6 +11,12 @@
     },
     "typeCheck": false,
     "deleteOutDir": true,
-    "tsConfigPath": "tsconfig.build.json"
+    "tsConfigPath": "tsconfig.build.json",
+    "assets": [
+      {
+        "include": "auth/data/*.txt",
+        "watchAssets": true
+      }
+    ]
   }
 }

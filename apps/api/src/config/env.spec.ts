@@ -14,6 +14,10 @@ const valid = {
   SMTP_FROM: 'GovServe <no-reply@govserve.local>',
   CLAMAV_HOST: 'localhost',
   CLAMAV_PORT: '3310',
+  WEB_ORIGIN: 'http://localhost:5173',
+  JWT_ACCESS_SECRET: 'a'.repeat(32),
+  PII_KEYS: `k1:${Buffer.alloc(32, 1).toString('base64')}`,
+  BLIND_INDEX_KEY: Buffer.alloc(32, 2).toString('base64'),
 };
 
 describe('loadEnv', () => {
@@ -33,6 +37,24 @@ describe('loadEnv', () => {
     const invalid = { ...valid, S3_ACCESS_KEY_ID: '', SMTP_PORT: 'nope' };
     expect(() => loadEnv(invalid)).toThrow(/S3_ACCESS_KEY_ID[\s\S]*SMTP_PORT/);
     expect(() => loadEnv(invalid)).not.toThrow(/super-secret-value/);
+  });
+
+  it('should parse the PII key ring when keys are well formed', () => {
+    const env = loadEnv({
+      ...valid,
+      PII_KEYS: `k2:${Buffer.alloc(32, 3).toString('base64')},k1:${Buffer.alloc(32, 1).toString('base64')}`,
+    });
+    expect(env.PII_KEYS.map((k) => k.id)).toEqual(['k2', 'k1']);
+  });
+
+  it('should reject a PII key that is not 32 bytes', () => {
+    expect(() =>
+      loadEnv({ ...valid, PII_KEYS: `k1:${Buffer.alloc(16).toString('base64')}` }),
+    ).toThrow(/PII_KEYS/);
+  });
+
+  it('should reject a short JWT secret', () => {
+    expect(() => loadEnv({ ...valid, JWT_ACCESS_SECRET: 'short' })).toThrow(/JWT_ACCESS_SECRET/);
   });
 
   it('should reject a non-postgres DATABASE_URL', () => {

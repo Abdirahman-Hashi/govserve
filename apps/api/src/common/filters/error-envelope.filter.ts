@@ -50,6 +50,13 @@ export class ErrorEnvelopeFilter implements ExceptionFilter {
       if (exception instanceof BadRequestException && Array.isArray(message)) {
         body = { code: 'VALIDATION_FAILED', message: 'Validation failed', details: message };
       }
+      // Services may throw { code, message, details } to choose a specific error code.
+      if (typeof response === 'object' && response !== null) {
+        const r = response as { code?: unknown; details?: unknown };
+        if (typeof r.code === 'string') body.code = r.code;
+        if (r.details !== undefined) body.details = r.details;
+        if (typeof message === 'string') body.message = message;
+      }
     } else {
       this.logger.error({ err: exception, requestId }, 'Unhandled exception');
     }
