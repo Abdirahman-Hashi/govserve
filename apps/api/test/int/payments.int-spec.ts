@@ -672,6 +672,70 @@ describe('Payments, refunds and receipts (integration)', () => {
       ).toBe('REFUNDED');
     });
 
+    it('should decline a refund, and record a failed card refund that a supervisor retries', async () => {
+      const { session, app } = await submitted(0);
+      const start = await request(h.http())
+        .post(`${api}/applications/${app.id}/payments/card`)
+        .set(bearer(session))
+        .set('Idempotency-Key', `key-${Date.now()}-rx`)
+        .expect(201);
+      const payment = await h.prisma.payment.findUniqueOrThrow({
+        where: { id: (start.body as CardCheckout).paymentId },
+      });
+      await webhook(event('payment.succeeded', payment.reference, '1500')).expect(200);
+      const ask = (amountCents: string) =>
+        request(h.http())
+          .post(`${api}/staff/payments/${payment.id}/refunds`)
+          .set(bearer(officer.session))
+          .send({ reason: 'DUPLICATE_PAYMENT', amountCents })
+          .expect(201)
+          .then((r) => r.body as RefundDto);
+      const declined = await ask('100');
+      await request(h.http())
+        .post(`${api}/staff/refunds/${declined.id}/decline`)
+        .set(bearer(supA.session))
+        .send({ note: 'Not a duplicate payment' })
+        .expect(200);
+      expect(await actions(declined.id)).toEqual(['REFUND_REQUESTED', 'REFUND_DECLINED']);
+
+      const r = await ask('1500');
+      await request(h.http())
+        .post(`${api}/staff/refunds/${r.id}/approve`)
+        .set(bearer(supA.session))
+        .expect(200);
+      const first = await h.prisma.refund.findUniqueOrThrow({ where: { id: r.id } });
+      await webhook(
+        event('refund.failed', payment.reference, '1500', {
+          providerRefundId: first.providerRefundId,
+        }),
+      ).expect(200);
+      expect((await h.prisma.refund.findUniqueOrThrow({ where: { id: r.id } })).status).toBe(
+        'FAILED',
+      );
+      await request(h.http())
+        .post(`${api}/staff/refunds/${r.id}/retry`)
+        .set(bearer(supA.session))
+        .expect(200);
+      const second = await h.prisma.refund.findUniqueOrThrow({ where: { id: r.id } });
+      await webhook(
+        event('refund.succeeded', payment.reference, '1500', {
+          providerRefundId: second.providerRefundId,
+        }),
+      ).expect(200);
+      expect((await h.prisma.refund.findUniqueOrThrow({ where: { id: r.id } })).status).toBe(
+        'COMPLETED',
+      );
+      expect(await actions(r.id)).toEqual([
+        'REFUND_REQUESTED',
+        'REFUND_APPROVED',
+        'REFUND_SENT_TO_GATEWAY',
+        'REFUND_FAILED',
+        'REFUND_RETRIED',
+        'REFUND_SENT_TO_GATEWAY',
+        'REFUND_COMPLETED',
+      ]);
+    });
+
     it('should request refunds automatically when a paid application is withdrawn before review', async () => {
       const { session, app } = await submitted(0);
       const p = (await pay(session, app.id, '1500').expect(201)).body as PaymentDto;

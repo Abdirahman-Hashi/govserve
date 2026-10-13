@@ -31,7 +31,7 @@ import { type AuthUser } from '../auth/auth.types';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { ReqCtx, type RequestContext } from '../common/request-context';
-import { ApiZodResponse, ZodPipe } from '../common/zod';
+import { ApiZodQuery, ApiZodResponse, ZodPipe } from '../common/zod';
 import { ReportsService } from './reports.service';
 
 const scoped =
@@ -68,6 +68,7 @@ export class ReportsController {
   constructor(private readonly reports: ReportsService) {}
 
   @Get('summary')
+  @ApiZodQuery(ReportFiltersSchema)
   @ApiOperation({
     summary: 'Dashboard KPIs',
     description: `${scoped} Collections, outstanding, volumes, processing time, SLA.`,
@@ -81,6 +82,7 @@ export class ReportsController {
   }
 
   @Get('collections')
+  @ApiZodQuery(CollectionsQuerySchema)
   @ApiOperation({
     summary: 'Collections by day, service or channel',
     description: `${scoped} Confirmed minus refunds minus reversals, in cents.`,
@@ -94,6 +96,7 @@ export class ReportsController {
   }
 
   @Get('volumes')
+  @ApiZodQuery(ReportFiltersSchema)
   @ApiOperation({ summary: 'Submitted vs completed per week', description: scoped })
   @ApiZodResponse(200, VolumesReportSchema)
   volumes(
@@ -104,6 +107,7 @@ export class ReportsController {
   }
 
   @Get('pending-work')
+  @ApiZodQuery(ReportFiltersSchema)
   @ApiOperation({
     summary: 'Queue sizes and oldest items',
     description: `${scoped} A snapshot of now, per department and officer.`,
@@ -117,6 +121,7 @@ export class ReportsController {
   }
 
   @Get('movements')
+  @ApiZodQuery(MovementsQuerySchema)
   @ApiOperation({
     summary: 'Drill-down: money movements',
     description: `${scoped} Keyset pages of 25.`,
@@ -131,6 +136,7 @@ export class ReportsController {
   }
 
   @Get('applications')
+  @ApiZodQuery(ReportApplicationsQuerySchema)
   @ApiOperation({
     summary: 'Drill-down: applications',
     description: `${scoped} Keyset pages of 25.`,
@@ -145,13 +151,14 @@ export class ReportsController {
   }
 
   @Get('export/:dataset.csv')
+  @ApiZodQuery(ExportQuerySchema)
   @ApiOperation({
     summary: 'Export a report as CSV',
     description: `${scoped} Streamed; amounts in cents; audited (REPORT_EXPORTED).`,
   })
   @ApiProduces('text/csv')
   @ApiResponse({ status: 200, description: 'CSV file' })
-  async export(
+  async exportCsv(
     @CurrentUser() user: AuthUser,
     @Param('dataset', new ZodPipe(z.enum(ReportDatasets))) dataset: ReportDataset,
     @Query(new ZodPipe(ExportQuerySchema)) q: z.infer<typeof ExportQuerySchema>,

@@ -5,7 +5,9 @@ import { ApplicationsService } from '../applications/applications.service';
 import { ConfigAdminService } from '../config-admin/config-admin.service';
 import { PaymentsService } from '../payments/payments.service';
 import { ReviewService } from '../review/review.service';
+import { AuditVerifierService } from '../audit/audit-verifier.service';
 import { PurgeService } from './purge.service';
+import { RetentionService } from './retention.service';
 
 export const MAINTENANCE_QUEUE = 'maintenance';
 export const PURGE_JOB = 'purge-auth';
@@ -13,6 +15,7 @@ export const RECONCILE_CARD_JOB = 'reconcile-card';
 export const ABANDON_UNPAID_JOB = 'abandon-unpaid';
 export const EXPIRE_CLAIMS_JOB = 'expire-claims';
 export const SLA_BREACH_JOB = 'sla-breach';
+export const AUDIT_VERIFY_JOB = 'audit-verify';
 export const CORRECTION_DEADLINES_JOB = 'correction-deadlines';
 
 /** Daily retention work (ADR-0005: BullMQ repeatable jobs). */
@@ -24,6 +27,8 @@ export class MaintenanceProcessor extends WorkerHost {
     private readonly settings: ConfigAdminService,
     private readonly payments: PaymentsService,
     private readonly review: ReviewService,
+    private readonly retention: RetentionService,
+    private readonly auditVerifier: AuditVerifierService,
   ) {
     super();
   }
@@ -41,6 +46,10 @@ export class MaintenanceProcessor extends WorkerHost {
       await this.review.expireClaims();
       return;
     }
+    if (job.name === AUDIT_VERIFY_JOB) {
+      await this.auditVerifier.verify();
+      return;
+    }
     if (job.name === SLA_BREACH_JOB) {
       await this.review.detectSlaBreaches();
       return;
@@ -50,8 +59,18 @@ export class MaintenanceProcessor extends WorkerHost {
       return;
     }
     if (job.name !== PURGE_JOB) return;
-    await this.purge.purgeUnverifiedCitizens();
-    await this.purge.pruneAuthArtifacts();
+    const [unverifiedDays, pruneDays, documentYears, closedUploadDays] = await Promise.all([
+      this.settings.get('retention.unverifiedDays'),
+      this.settings.get('retention.pruneDays'),
+      this.settings.get('retention.documentYears'),
+      this.settings.get('retention.closedUploadDays'),
+    ]);
+    await this.purge.purgeUnverifiedCitizens(unverifiedDays);
+    await this.purge.pruneAuthArtifacts(pruneDays);
+    // FR-150–FR-152: files (rows kept) and dispatched outbox rows; every purge is audited.
+    await this.retention.purgeDecidedDocuments(documentYears);
+    await this.retention.purgeClosedUploads(closedUploadDays);
+    await this.retention.pruneOutbox(pruneDays);
     // A4: drafts idle longer than the retention setting are abandoned and their uploads deleted.
     await this.applications.abandonIdleDrafts(await this.settings.get('retention.draftDays'));
   }
@@ -77,6 +96,11 @@ export class MaintenanceScheduler implements OnApplicationBootstrap {
       EXPIRE_CLAIMS_JOB,
       { every: 15 * 60_000 },
       { name: EXPIRE_CLAIMS_JOB },
+    );
+    await this.queue.upsertJobScheduler(
+      AUDIT_VERIFY_JOB,
+      { pattern: '0 4 * * *', tz: 'Africa/Mogadishu' },
+      { name: AUDIT_VERIFY_JOB },
     );
     await this.queue.upsertJobScheduler(
       SLA_BREACH_JOB,

@@ -20,6 +20,7 @@ import {
   type UpdateApplicationRequest,
   validateFormData,
 } from '@govserve/shared';
+import { AuditService, SYSTEM_ACTOR } from '../audit/audit.service';
 import { type AuthUser } from '../auth/auth.types';
 import { assertCitizenOwns } from '../common/guards/scope';
 import { type RequestContext } from '../common/request-context';
@@ -118,6 +119,7 @@ export class ApplicationsService {
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
     private readonly refunds: RefundsService,
     private readonly settings: ConfigAdminService,
+    private readonly audit: AuditService,
   ) {}
 
   // ─── A1: create a draft ─────────────────────────────────────────────────────
@@ -479,6 +481,16 @@ export class ApplicationsService {
             where: { applicationId: app.id },
             data: { purgedAt: now },
           });
+          if (docs.length > 0) {
+            await this.audit.record(tx, {
+              actor: SYSTEM_ACTOR,
+              action: 'DOCUMENTS_PURGED',
+              entityType: 'Application',
+              entityId: app.id,
+              departmentId: app.departmentId,
+              after: { documents: docs.length, reason: `IDLE_DRAFT_${draftDays}_DAYS` },
+            });
+          }
           return docs.map((d) => d.storageKey);
         })
         .catch((err: unknown) => {

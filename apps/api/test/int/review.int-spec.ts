@@ -624,6 +624,74 @@ describe('Officer review and certificates (integration)', () => {
     });
   });
 
+  describe('supervisor oversight', () => {
+    it('should reassign work in review and return a forwarded application to the officer', async () => {
+      const a = await queued('PROOF_OF_ADDRESS', addrOfficer);
+      let app = await claimed(addrOfficer, a.id);
+      app = (
+        await post(addrSup.session, `/review/applications/${a.id}/assign`, {
+          version: app.version,
+          officerId: addrOfficer2.session.user.id,
+        }).expect(200)
+      ).body as StaffApplication;
+      expect(app).toMatchObject({ status: 'IN_REVIEW', assigneeId: addrOfficer2.session.user.id });
+      expect(
+        await h.prisma.auditLog.count({
+          where: { entityId: a.id, action: 'APPLICATION_REASSIGNED' },
+        }),
+      ).toBe(1);
+
+      const b = await queued('BIRTH_CERTIFICATE', civOfficer);
+      app = await claimed(civOfficer, b.id);
+      app = await attended(civOfficer, b.id, [{ name: 'Amina Hassan', role: 'Mother' }]);
+      app = (
+        await post(civOfficer.session, `/review/applications/${b.id}/approve`, {
+          version: app.version,
+        }).expect(200)
+      ).body as StaffApplication;
+      app = (
+        await post(civSupA.session, `/review/applications/${b.id}/return`, {
+          version: app.version,
+          note: 'Check the father’s ID first',
+        }).expect(200)
+      ).body as StaffApplication;
+      expect(app.status).toBe('IN_REVIEW');
+      expect(app.decisions.at(-1)).toMatchObject({ level: 'SUPERVISOR', decision: 'RETURN' });
+      expect(
+        await h.prisma.auditLog.count({
+          where: { entityId: b.id, action: 'APPLICATION_RETURNED' },
+        }),
+      ).toBe(1);
+    });
+
+    it('should hold a paid copy when its original was revoked in the meantime', async () => {
+      const { session, id } = await queued('PROOF_OF_ADDRESS', addrOfficer);
+      let app = await claimed(addrOfficer, id);
+      app = (
+        await post(addrOfficer.session, `/review/applications/${id}/approve`, {
+          version: app.version,
+        }).expect(200)
+      ).body as StaffApplication;
+      const order = await post(session, `/certificates/${app.certificate!.id}/duplicates`, {
+        copies: 1,
+      }).expect(201);
+      const copyId = (order.body as { applicationId: string }).applicationId;
+      await post(addrSup.session, `/certificates/${app.certificate!.id}/revoke`, {
+        reason: 'ERROR',
+        note: 'Issued in error',
+      }).expect(200);
+      await payInFull(session, await citizenView(session, copyId), addrOfficer);
+      const copy = await citizenView(session, copyId);
+      expect(copy.status).toBe('AWAITING_PAYMENT');
+      expect(copy.certificate).toBeNull();
+      expect(
+        await h.prisma.auditLog.count({
+          where: { entityId: copyId, action: 'DUPLICATE_SOURCE_NOT_VALID' },
+        }),
+      ).toBe(1);
+    });
+  });
+
   describe('police clearance: referral', () => {
     it('should refer a record found without issuing or exposing the note', async () => {
       const { session, id } = await queued('POLICE_CLEARANCE', polOfficer);

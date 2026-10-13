@@ -120,3 +120,24 @@ Settled in the Phase 0 interview. Details are in docs/SPEC.md, docs/SERVICES.md 
   use `formatUsd` on bigint cents. Recharts 3.10.1 loads only in the dashboard chunk.
 - **Report CSV exports** are audited as `REPORT_EXPORTED` with the applied scope.
 
+## Phase 10 decisions (2026-10-14)
+- **The audit chain is computed by a database trigger** under an advisory lock, so every row is chained in commit order
+  whoever writes it. A verifier with a checkpoint reports `ROW_CHANGED`, `LINK_BROKEN` or `TAIL_REMOVED` and notifies all
+  admins (ADR-0010).
+- **Two database roles:** the API runs as a member of `govserve_app_rw` (`DATABASE_APP_URL`; INSERT and SELECT only on audit
+  tables). Migrations run as the owner (`DATABASE_URL`). Production refuses to start when both are the same user.
+  Integration tests run as the restricted role.
+- **Audit coverage is proven, not asserted:** docs/AUDIT_COVERAGE.md lists all 91 actions. A unit test keeps it in step with
+  the code, and the integration run fails unless every listed action was actually written.
+- **Audit viewer:** supervisors see only rows of their department (auth and admin rows have none, so they are admin-only).
+  Exports are audited (`AUDIT_EXPORTED`).
+- **Retention:** settings `retention.documentYears` (7), `retention.closedUploadDays` (90), `retention.unverifiedDays` (7)
+  and `retention.pruneDays` (30). Files are deleted and their rows kept (`purgedAt`; the API shows `purged` and answers
+  410). Each purge or prune writes an audit row. Dispatched outbox rows are pruned; notifications keep their own rows, and
+  the in-app list filters by template.
+- **API contract:** `info.version` is semver (1.10.0), with URIs at `/api/v1`. `apps/api/openapi.lock` and
+  docs/API_CHANGELOG.md guard changes. Examples are generated from the schemas, with name-based values. `/health` and
+  `/ready` stay outside `/api/v1` as load-balancer probes.
+- **Gaps closed by the review:** signing-key registration and rotation, seeded settings and reason codes, auth-artifact
+  pruning, and idle-draft document purges are now audited. Signing keys are no longer rewritten on every boot.
+

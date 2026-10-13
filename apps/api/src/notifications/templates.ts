@@ -196,6 +196,15 @@ function body({ template, vars }: NotificationMessage): Body {
         lines: [`A refund for application ${ref} has been paid. Details are in the portal.`],
         action: open(),
       };
+    case 'AUDIT_CHAIN_BROKEN':
+      return {
+        subject: 'GovServe audit trail check failed',
+        lines: [
+          `The nightly check of the audit trail found a broken link at position ${vars['chainSeq'] ?? 'unknown'}.`,
+          'Records may have been changed outside the application. Investigate before relying on the audit trail.',
+        ],
+        ...(vars['link'] && { action: { label: 'Open the audit viewer', url: vars['link'] } }),
+      };
     case 'SLA_BREACHED':
       return {
         subject: `Overdue: application ${ref}`,

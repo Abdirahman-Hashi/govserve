@@ -1,16 +1,17 @@
 import { type INestApplication } from '@nestjs/common';
 import { DocumentBuilder, type OpenAPIObject, SwaggerModule } from '@nestjs/swagger';
+import { API_VERSION, finalizeOpenApi } from './openapi-finalize';
 
 export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
   const config = new DocumentBuilder()
     .setTitle('GovServe API')
     .setDescription(
-      'Revenue & Service Portal API. Errors use the envelope { error: { code, message, details, requestId } }.',
+      'Revenue & Service Portal API (URI version /api/v1; contract version in info.version, changes in docs/API_CHANGELOG.md). Errors use the envelope { error: { code, message, details, requestId } }. Money is integer cents as decimal strings.',
     )
-    .setVersion('v1')
+    .setVersion(API_VERSION)
     .addBearerAuth()
     .build();
-  return SwaggerModule.createDocument(app, config);
+  return finalizeOpenApi(SwaggerModule.createDocument(app, config));
 }
 
 /** Swagger UI at /api/docs, JSON at /api/docs-json. */

@@ -19,7 +19,7 @@ export interface EventContext {
 
 export interface Intent {
   template: EventTemplate;
-  recipients: 'APPLICANT' | 'DEPARTMENT_SUPERVISORS';
+  recipients: 'APPLICANT' | 'DEPARTMENT_SUPERVISORS' | 'ADMINS';
   mandatory: boolean;
   vars: NotificationVars;
 }
@@ -47,6 +47,18 @@ const intent = (
  * Events without an application (or not in the list) notify nobody.
  */
 export function plan(ctx: EventContext): Intent[] {
+  // System-wide alert with no application: every active admin (ADR-0010).
+  if (ctx.type === 'AUDIT_CHAIN_BROKEN') {
+    const seq = ctx.payload['chainSeq'];
+    return [
+      {
+        template: 'AUDIT_CHAIN_BROKEN',
+        recipients: 'ADMINS',
+        mandatory: true,
+        vars: typeof seq === 'string' ? { chainSeq: seq } : {},
+      },
+    ];
+  }
   if (!ctx.application) return [];
   const status = typeof ctx.payload['status'] === 'string' ? ctx.payload['status'] : null;
   switch (ctx.type) {

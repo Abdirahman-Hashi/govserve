@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import {
+  EventTemplates,
   linkFor,
   type NotificationDto,
   type NotificationPage,
@@ -14,6 +15,9 @@ import { type Notification } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 const PAGE = 20;
+/** Event messages appear in the app; direct sends (codes, invitations) are only logged. The outbox
+ * row may be pruned after 30 days (eventId set to null), so filter by template, not by event. */
+const IN_APP: string[] = [...EventTemplates];
 
 /** In-app notification list (FR-100) and email preferences (FR-102). Always the caller's own. */
 @Injectable()
@@ -23,10 +27,10 @@ export class NotificationsService {
     private readonly audit: AuditService,
   ) {}
 
-  /** Keyset by id (UUIDv7 is time-ordered). Direct sends (codes) are logged but not listed. */
+  /** Keyset by id (UUIDv7 is time-ordered). */
   async list(userId: string, cursor?: string): Promise<NotificationPage> {
     const rows = await this.prisma.notification.findMany({
-      where: { userId, eventId: { not: null }, ...(cursor && { id: { lt: cursor } }) },
+      where: { userId, template: { in: IN_APP }, ...(cursor && { id: { lt: cursor } }) },
       orderBy: { id: 'desc' },
       take: PAGE + 1,
     });
@@ -36,7 +40,7 @@ export class NotificationsService {
 
   async unread(userId: string): Promise<{ unread: number }> {
     const unread = await this.prisma.notification.count({
-      where: { userId, eventId: { not: null }, readAt: null },
+      where: { userId, template: { in: IN_APP }, readAt: null },
     });
     return { unread };
   }

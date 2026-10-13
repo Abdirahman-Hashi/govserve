@@ -206,12 +206,24 @@ model AuditLog {
   requestId    String?
   prevHash     Bytes?
   hash         Bytes?
+  /// Position in the hash chain: assigned by the insert trigger in commit order (ADR-0010).
+  chainSeq     BigInt?   @unique
 
   @@index([entityType, entityId, occurredAt])
   @@index([actorId, occurredAt])
   @@index([departmentId, occurredAt])
   @@index([action])
   @@map("audit_log")
+}
+
+/// Last verified point of the audit chain, so removing rows from the end is detected too.
+model AuditCheckpoint {
+  id         BigInt   @id @default(autoincrement())
+  chainSeq   BigInt
+  hash       Bytes
+  verifiedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("audit_checkpoint")
 }
 
 // ─── Catalogue (DATA_MODEL §2) ──────────────────────────────────────────────
@@ -586,7 +598,8 @@ model Notification {
   user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// Null for direct sends (codes and invitations are never written to the outbox).
   eventId           String?             @db.Uuid
-  event             OutboxEvent?        @relation(fields: [eventId], references: [id])
+  // Dispatched outbox rows are pruned after 30 days; the notification stays (FR-152).
+  event             OutboxEvent?        @relation(fields: [eventId], references: [id], onDelete: SetNull)
   channel           NotificationChannel @default(EMAIL)
   template          String
   /// Non-PII variables only (reference number, link targets, appointment time and place).

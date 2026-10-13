@@ -17,6 +17,7 @@ export const EventTemplates = [
   'APPLICATION_WITHDRAWN',
   'REFUND_PROCESSED',
   'SLA_BREACHED',
+  'AUDIT_CHAIN_BROKEN',
 ] as const;
 export type EventTemplate = (typeof EventTemplates)[number];
 
@@ -48,6 +49,7 @@ export const NotificationVarsSchema = z.object({
   dueAt: z.iso.datetime().optional(),
   appointmentAt: z.iso.datetime().optional(),
   location: z.string().optional(),
+  chainSeq: z.string().optional(),
 });
 export type NotificationVars = z.infer<typeof NotificationVarsSchema>;
 
@@ -76,6 +78,7 @@ export type NotificationPreferences = z.infer<typeof NotificationPreferencesSche
 
 /** Portal path an in-app notification or email opens (staff alerts open the review page). */
 export function linkFor(template: NotificationTemplate, vars: NotificationVars): string | null {
+  if (template === 'AUDIT_CHAIN_BROKEN') return '/admin/audit';
   if (!vars.applicationId) return null;
   return template === 'SLA_BREACHED'
     ? `/officer/review/${vars.applicationId}`

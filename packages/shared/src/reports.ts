@@ -8,7 +8,13 @@ const Cents = z.string().regex(/^-?\d+$/);
 
 export const MovementKinds = ['CONFIRMED', 'REFUNDED', 'REVERSED'] as const;
 export type MovementKind = (typeof MovementKinds)[number];
-export const ReportDatasets = ['collections', 'volumes', 'pending-work', 'movements', 'applications'] as const;
+export const ReportDatasets = [
+  'collections',
+  'volumes',
+  'pending-work',
+  'movements',
+  'applications',
+] as const;
 export type ReportDataset = (typeof ReportDatasets)[number];
 
 const filterShape = {

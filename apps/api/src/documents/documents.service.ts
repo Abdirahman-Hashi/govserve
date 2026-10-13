@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { type Readable } from 'node:stream';
 import { InjectQueue } from '@nestjs/bullmq';
 import {
+  GoneException,
   ConflictException,
   Inject,
   Injectable,
@@ -134,6 +135,12 @@ export class DocumentsService {
     if (!doc?.applicationId) throw new NotFoundException();
     const departmentId = await this.departmentOf(this.prisma, doc);
     assertSameDepartment(user, departmentId);
+    if (doc.purgedAt) {
+      throw new GoneException({
+        code: 'DOCUMENT_PURGED',
+        message: 'This file was deleted under the retention policy.',
+      });
+    }
     // Staff only ever open files that passed the virus scan.
     if (doc.status !== 'CLEAN') {
       throw new ConflictException({
@@ -311,6 +318,12 @@ export class DocumentsService {
 
   async download(user: AuthUser, documentId: string): Promise<DownloadTicket> {
     const doc = await this.ownedDocument(user, documentId);
+    if (doc.purgedAt) {
+      throw new GoneException({
+        code: 'DOCUMENT_PURGED',
+        message: 'This file was deleted under the retention policy.',
+      });
+    }
     if (doc.status !== 'CLEAN' && doc.status !== 'QUARANTINED') {
       throw new ConflictException({
         code: 'NOT_AVAILABLE',

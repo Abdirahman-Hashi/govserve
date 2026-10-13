@@ -10,10 +10,11 @@ import { PasswordService } from '../src/auth/password.service';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { StaffService } from '../src/users/staff.service';
 
-/** Staff accounts the Playwright officer flow signs in with (address office). */
+/** Staff accounts the Playwright flows sign in with (address office, plus an admin). */
 export const E2E_STAFF = [
   { email: 'e2e-officer@govserve.test', fullName: 'E2E Officer', role: 'OFFICER' },
   { email: 'e2e-supervisor@govserve.test', fullName: 'E2E Supervisor', role: 'SUPERVISOR' },
+  { email: 'e2e-admin@govserve.test', fullName: 'E2E Admin', role: 'ADMIN' },
 ] as const;
 
 /**
@@ -41,9 +42,10 @@ async function main(): Promise<void> {
     for (const staff of E2E_STAFF) {
       const existing = await prisma.user.findUnique({ where: { email: staff.email } });
       if (!existing) {
-        const { link } = await app
-          .get(StaffService)
-          .invite(SYSTEM_ACTOR, { ...staff, departmentCode: 'ADDRESS' });
+        const { link } = await app.get(StaffService).invite(SYSTEM_ACTOR, {
+          ...staff,
+          departmentCode: staff.role === 'ADMIN' ? null : 'ADDRESS',
+        });
         const token = new URL(link).searchParams.get('token')!;
         await app
           .get(AuthService)

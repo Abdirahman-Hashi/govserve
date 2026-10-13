@@ -11,6 +11,7 @@ import {
   MaintenanceScheduler,
 } from './maintenance.processor';
 import { PurgeService } from './purge.service';
+import { RetentionService } from './retention.service';
 
 @Module({
   imports: [
@@ -29,8 +30,8 @@ import { PurgeService } from './purge.service';
     PaymentsModule,
     ReviewModule,
   ],
-  providers: [PurgeService, MaintenanceProcessor, MaintenanceScheduler],
-  exports: [PurgeService],
+  providers: [PurgeService, RetentionService, MaintenanceProcessor, MaintenanceScheduler],
+  exports: [PurgeService, RetentionService],
 })
 export class JobsModule {}
 

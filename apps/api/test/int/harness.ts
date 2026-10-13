@@ -19,6 +19,9 @@ import {
   NOTIFICATION_PORT,
   type NotificationMessage,
 } from '../../src/notifications/notification.port';
+import { appendFileSync } from 'node:fs';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '../../src/generated/prisma/client';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { StaffService } from '../../src/users/staff.service';
 import { startTestInfra, testEnv, type TestInfra } from '../testcontainers';
@@ -69,7 +72,10 @@ export class CookieJar {
 export interface Harness {
   app: INestApplication;
   infra: TestInfra;
+  /** The app's own client (restricted application role). */
   prisma: PrismaService;
+  /** Owner connection for test-only seeding and tampering; never used by the app. */
+  owner: PrismaClient;
   mail: InMemoryNotificationAdapter;
   http: () => App;
   close(): Promise<void>;
@@ -86,14 +92,27 @@ export async function startHarness(opts: { rateLimit?: boolean } = {}): Promise<
   const app = moduleRef.createNestApplication({ bufferLogs: true, rawBody: true });
   configureApp(app);
   await app.init();
+  const owner = new PrismaClient({
+    adapter: new PrismaPg({ connectionString: infra.databaseUrl }),
+  });
   return {
     app,
     infra,
     mail,
     prisma: app.get(PrismaService),
+    owner,
     http: () => app.getHttpServer() as App,
     close: async () => {
+      // Record which audit actions this suite wrote (FR-130 coverage, see global-teardown).
+      const file = process.env['AUDIT_OBSERVED_FILE'];
+      if (file) {
+        const rows = await owner.$queryRaw<
+          { action: string }[]
+        >`SELECT DISTINCT "action" FROM "audit_log"`;
+        appendFileSync(file, rows.map((r) => `${r.action}\n`).join(''));
+      }
       await app.close();
+      await owner.$disconnect();
       await infra.stop();
     },
   };

@@ -128,7 +128,7 @@ function StatusView({ app }: { app: ApplicationDetail }) {
                 {app.requiredDocuments.find((r) => r.type === d.docType)?.label ?? d.docType} —{' '}
                 {d.originalName}
               </span>
-              {d.status === 'CLEAN' && (
+              {d.status === 'CLEAN' && !d.purged && (
                 <button
                   type="button"
                   className="underline"

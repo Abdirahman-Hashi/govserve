@@ -2,6 +2,8 @@ import { createPrivateKey, createPublicKey, type KeyObject, sign } from 'node:cr
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { bytesToBase64Url, canonicalize, type PublicKeys } from '@govserve/shared';
 import { APP_CONFIG, type AppConfig } from '../config/config.module';
+import { AuditService, SYSTEM_ACTOR } from '../audit/audit.service';
+import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 interface LoadedKey {
@@ -23,6 +25,7 @@ export class SigningService implements OnModuleInit {
   constructor(
     @Inject(APP_CONFIG) config: AppConfig,
     private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
   ) {
     this.keys = config.SIGNING_KEYS.map(({ id, der }) => {
       const privateKey = createPrivateKey({ key: der, format: 'der', type: 'pkcs8' });
@@ -34,15 +37,45 @@ export class SigningService implements OnModuleInit {
     });
   }
 
-  /** Keeps SigningKey in step with the configured keys: first ACTIVE, others RETIRED. */
+  /**
+   * Keeps SigningKey in step with the configured keys: first ACTIVE, others RETIRED. Only real
+   * changes are written, each with an audit row in the same transaction (FR-130).
+   */
   async onModuleInit(): Promise<void> {
     for (const [i, key] of this.keys.entries()) {
       const status = i === 0 ? 'ACTIVE' : 'RETIRED';
-      await this.prisma.signingKey.upsert({
-        where: { id: key.id },
-        create: { id: key.id, publicKey: new Uint8Array(key.publicRaw), status },
-        update: { status, ...(status === 'RETIRED' && { retiredAt: new Date() }) },
-      });
+      await this.prisma
+        .$transaction(async (tx) => {
+          const current = await tx.signingKey.findUnique({ where: { id: key.id } });
+          if (current?.status === status) return;
+          if (current) {
+            await tx.signingKey.update({
+              where: { id: key.id },
+              data: { status, retiredAt: status === 'RETIRED' ? new Date() : null },
+            });
+          } else {
+            await tx.signingKey.create({
+              data: { id: key.id, publicKey: new Uint8Array(key.publicRaw), status },
+            });
+          }
+          await this.audit.record(tx, {
+            actor: SYSTEM_ACTOR,
+            action: current
+              ? status === 'ACTIVE'
+                ? 'SIGNING_KEY_ACTIVATED'
+                : 'SIGNING_KEY_RETIRED'
+              : 'SIGNING_KEY_REGISTERED',
+            entityType: 'SigningKey',
+            entityId: key.id,
+            ...(current && { before: { status: current.status } }),
+            after: { status },
+          });
+        })
+        // Another instance booting at the same moment registered it first: nothing left to do.
+        .catch((err: unknown) => {
+          if (!(err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002'))
+            throw err;
+        });
     }
     this.logger.log({ active: this.activeKeyId() }, 'Signing keys loaded');
   }

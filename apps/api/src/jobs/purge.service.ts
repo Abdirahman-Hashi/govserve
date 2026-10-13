@@ -13,9 +13,12 @@ export class PurgeService {
     private readonly audit: AuditService,
   ) {}
 
-  /** Deletes citizen accounts never verified within 7 days. Returns how many were removed. */
-  async purgeUnverifiedCitizens(now = new Date()): Promise<number> {
-    const cutoff = new Date(now.getTime() - AUTH_POLICY.unverifiedAccountTtlDays * 86_400_000);
+  /** Deletes citizen accounts never verified within `days` (default 7). Returns how many were removed. */
+  async purgeUnverifiedCitizens(
+    days: number = AUTH_POLICY.unverifiedAccountTtlDays,
+    now = new Date(),
+  ): Promise<number> {
+    const cutoff = new Date(now.getTime() - days * 86_400_000);
     const stale = await this.prisma.user.findMany({
       where: { role: 'CITIZEN', emailVerifiedAt: null, createdAt: { lt: cutoff } },
       select: { id: true },
@@ -31,7 +34,7 @@ export class PurgeService {
           action: 'USER_PURGED',
           entityType: 'User',
           entityId: id,
-          after: { reason: 'UNVERIFIED_7_DAYS' },
+          after: { reason: 'UNVERIFIED', olderThanDays: days },
         });
       });
     }
@@ -40,10 +43,25 @@ export class PurgeService {
     return stale.length;
   }
 
-  /** Removes expired one-time codes and long-expired refresh tokens (30 days after expiry). */
-  async pruneAuthArtifacts(now = new Date()): Promise<void> {
-    const cutoff = new Date(now.getTime() - 30 * 86_400_000);
-    await this.prisma.otpCode.deleteMany({ where: { expiresAt: { lt: cutoff } } });
-    await this.prisma.refreshToken.deleteMany({ where: { expiresAt: { lt: cutoff } } });
+  /** Removes expired one-time codes and long-expired refresh tokens; one audit row with the counts. */
+  async pruneAuthArtifacts(
+    days: number,
+    now = new Date(),
+  ): Promise<{ otpCodes: number; refreshTokens: number }> {
+    const cutoff = new Date(now.getTime() - days * 86_400_000);
+    return this.prisma.$transaction(async (tx) => {
+      const otp = await tx.otpCode.deleteMany({ where: { expiresAt: { lt: cutoff } } });
+      const tokens = await tx.refreshToken.deleteMany({ where: { expiresAt: { lt: cutoff } } });
+      if (otp.count + tokens.count > 0) {
+        await this.audit.record(tx, {
+          actor: SYSTEM_ACTOR,
+          action: 'RETENTION_PRUNED',
+          entityType: 'Retention',
+          entityId: 'auth-artifacts',
+          after: { otpCodes: otp.count, refreshTokens: tokens.count, olderThanDays: days },
+        });
+      }
+      return { otpCodes: otp.count, refreshTokens: tokens.count };
+    });
   }
 }

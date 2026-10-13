@@ -21,6 +21,9 @@ export const EnvSchema = z.object({
   // Disable only in automated tests that exercise many auth calls from one IP.
   RATE_LIMIT_ENABLED: booleanString.default(true),
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
+  // Runtime connection as a member of govserve_app_rw (INSERT/SELECT only on audit_log, ADR-0010).
+  // DATABASE_URL stays the owner, used by migrations. Required to differ in production.
+  DATABASE_APP_URL: z.url({ protocol: /^postgres(ql)?$/ }).optional(),
   REDIS_URL: z.url({ protocol: /^rediss?$/ }),
   S3_ENDPOINT: z.url(),
   S3_REGION: z.string().min(1),
@@ -100,6 +103,15 @@ function crossCheck(env: Env): string[] {
   const problems: string[] = [];
   if (env.NODE_ENV === 'production' && env.VIRUS_SCANNER !== 'clamav') {
     problems.push('  - VIRUS_SCANNER: must be "clamav" in production');
+  }
+  if (env.NODE_ENV === 'production') {
+    const owner = new URL(env.DATABASE_URL).username;
+    const app = env.DATABASE_APP_URL ? new URL(env.DATABASE_APP_URL).username : owner;
+    if (app === owner) {
+      problems.push(
+        '  - DATABASE_APP_URL: production must connect as the restricted application role, not the owner',
+      );
+    }
   }
   if (env.NODE_ENV === 'production' && env.CARD_GATEWAY === 'mock') {
     problems.push('  - CARD_GATEWAY: the mock gateway cannot run in production');

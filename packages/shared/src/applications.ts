@@ -72,6 +72,8 @@ export const DocumentSchema = z.object({
   status: z.enum(DocumentStatuses),
   statusReason: z.string().nullable(),
   createdAt: z.iso.datetime(),
+  /** The stored file was deleted under the retention policy; the record remains (FR-150). */
+  purged: z.boolean(),
 });
 export type DocumentDto = z.infer<typeof DocumentSchema>;
 

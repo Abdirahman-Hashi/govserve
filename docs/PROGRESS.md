@@ -14,7 +14,7 @@ Tick a phase only when lint, typecheck and tests are green and the phase's accep
 | 07 | Email notifications | 06 | [x] |
 | 08 | Search + application/transaction history | 06 | [x] |
 | 09 | Management dashboard | 05, 06 | [x] |
-| 10 | Audit trail hardening + OpenAPI polish | 02–09 | [ ] |
+| 10 | Audit trail hardening + OpenAPI polish | 02–09 | [x] |
 | 11 | Production Docker, CI/CD, cloud deploy | 10 | [ ] |
 | 12 | Security review, load test, UAT fixes | 11 | [ ] |
 
@@ -50,3 +50,6 @@ Follow-ups: decide whether staff searches by national ID or phone should be audi
 
 **Phase 09 (2026-10-14):** Management dashboard for supervisors (own department, enforced server-side) and admins (all, or one department), from live SQL views over the payment ledger and applications (ADR-0009). It shows collections (confirmed − refunds − reversals, dated when they happen) by day, service and channel; outstanding balances; volumes; median and p90 submit→decision; SLA compliance; overdue counts; and pending work per officer and department. Each KPI drills down to its list with an audited CSV export. Web uses Recharts 3.10.1 in a lazy chunk. The reconciliation test matches direct table sums to the cent.
 Follow-ups: chart geometry uses `centsForChart` (accepted as display-only, exact to 2^53 cents); move to materialized views with a refresh job if volume grows; web entry bundle about 161 KB gz.
+
+**Phase 10 (2026-10-14):** Tamper-evident audit trail (ADR-0010): an insert trigger chains every row in commit order (advisory lock, `chainSeq`, SHA-256 over a canonical row); `audit_verify()` plus a checkpoint report ROW_CHANGED, LINK_BROKEN or TAIL_REMOVED nightly and on demand, alerting admins; triggers make audit tables append-only, and the API now runs as `govserve_app_rw` (INSERT/SELECT only on audit), integration tests included. Audit coverage table of 91 actions, proven by a code↔doc unit test and an integration teardown that fails unless every action was written (4 gaps fixed, 8 untested paths now tested). Read-only audit viewer for supervisors (own department) and admins, with application history and audited CSV export. Retention jobs (7-year and 90-day file purges with rows kept and 410 on download, unverified accounts, 30-day pruning) are configurable and audited. API docs: contract 1.10.0 with error envelope, auth, examples and query parameters on all 119 operations, guarded by openapi.lock and API_CHANGELOG.
+Follow-ups (Phase 11): create the app login role from the secret store and grant govserve_app_rw; alert routing for dead-lettered emails and verifier failures beyond email; consider per-day chain anchors if audit write volume grows.

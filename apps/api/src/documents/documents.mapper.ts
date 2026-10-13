@@ -17,5 +17,6 @@ export function toDocumentDto(d: Document): DocumentDto {
     status: d.status,
     statusReason: d.statusReason,
     createdAt: d.createdAt.toISOString(),
+    purged: d.purgedAt !== null,
   };
 }

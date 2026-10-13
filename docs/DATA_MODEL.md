@@ -137,7 +137,7 @@ Police "record found" notes are stored encrypted with the review decision (Phase
 | status | enum {PENDING_UPLOAD, QUARANTINED, CLEAN, INFECTED, REJECTED} | PENDING_UPLOAD until the client confirms; REJECTED when size, type (by content) or SHA-256 do not match |
 | statusReason | text? | shown to the citizen |
 | supersededById | FK Document? | replaced upload (corrections keep history) |
-| purgedAt | timestamptz? | retention (FR-151/152): object deleted, row kept |
+| purgedAt | timestamptz? | retention (FR-151/152): object deleted, row kept; API shows `purged` and answers 410 on download |
 Index (applicationId, docType), (scanStatus, createdAt).
 
 ### CorrectionRequest / CorrectionItem
@@ -260,9 +260,15 @@ received, withdrawn).
 | departmentId | uuid? | scope for the supervisor viewer |
 | before, after | jsonb? | PII redacted |
 | ip, userAgent, requestId | text? | |
-| prevHash, hash | bytea | hash = SHA-256(prevHash ‖ canonical row) |
+| prevHash, hash | bytea | hash = SHA-256(prevHash ‖ canonical row), set by the insert trigger |
+| chainSeq | bigint unique | chain position in commit order (trigger, advisory lock) |
 Indexes: (entityType, entityId, occurredAt); (actorId, occurredAt); (departmentId, occurredAt); (action).
-The DB app role has INSERT and SELECT only.
+The API's role (`govserve_app_rw`) has INSERT and SELECT only; triggers block UPDATE, DELETE and TRUNCATE for everyone.
+`audit_verify()` returns the first broken link. See ADR-0010.
+
+### AuditCheckpoint
+`id, chainSeq, hash, verifiedAt`: the head of the chain at the last successful verification. Append-only, like
+`audit_log`. Used to detect rows removed from the end of the chain.
 
 ## 7. ER diagram (core)
 

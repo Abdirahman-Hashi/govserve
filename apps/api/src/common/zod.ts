@@ -1,5 +1,5 @@
 import { applyDecorators, type PipeTransform, UnprocessableEntityException } from '@nestjs/common';
-import { ApiBody, ApiResponse } from '@nestjs/swagger';
+import { ApiBody, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { z } from 'zod';
 
 type SchemaObject = Record<string, unknown> & { required?: string[] };
@@ -52,4 +52,18 @@ export function ApiZodResponse(
     schema: openApiSchema(schema),
     ...(description ? { description } : {}),
   });
+}
+
+/** Documents every field of a Zod-validated query object as a query parameter. */
+export function ApiZodQuery(schema: z.ZodType): MethodDecorator {
+  const json = openApiSchema(schema, 'input') as {
+    properties?: Record<string, SchemaObject>;
+    required?: string[];
+  };
+  const required = new Set(json.required ?? []);
+  return applyDecorators(
+    ...Object.entries(json.properties ?? {}).map(([name, prop]) =>
+      ApiQuery({ name, required: required.has(name), schema: prop }),
+    ),
+  );
 }

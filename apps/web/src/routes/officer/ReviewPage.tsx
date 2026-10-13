@@ -75,9 +75,7 @@ function ActionForm({
   const [outcome, setOutcome] = useState<'ATTENDED' | 'NO_SHOW'>('ATTENDED');
   const [attendees, setAttendees] = useState('');
   const [decision, setDecision] = useState<'KEEP' | 'REVOKE'>('KEEP');
-  const [items, setItems] = useState([
-    { kind: 'FIELD', target: '', comment: '' },
-  ]);
+  const [items, setItems] = useState([{ kind: 'FIELD', target: '', comment: '' }]);
   const fields = app.uiSchema.order;
   const docs = app.requiredDocuments.map((d) => d.type);
 
@@ -449,10 +447,15 @@ export function ReviewPage() {
 
   return (
     <div className="max-w-3xl space-y-8">
-      <p>
+      <p className="flex flex-wrap justify-between gap-2">
         <Link to="/officer" className="text-brand underline">
           ← {r.back}
         </Link>
+        {isSupervisor && (
+          <Link to={`/officer/audit/applications/${app.id}`} className="text-brand underline">
+            {t.audit.historyLink}
+          </Link>
+        )}
       </p>
       <div className="space-y-1">
         <h1 className="text-2xl font-bold">
@@ -589,7 +592,7 @@ export function ReviewPage() {
                 {app.requiredDocuments.find((x) => x.type === d.docType)?.label ?? d.docType} —{' '}
                 {d.originalName}
               </span>
-              {d.status === 'CLEAN' && (
+              {d.status === 'CLEAN' && !d.purged && (
                 <button
                   type="button"
                   className="underline"

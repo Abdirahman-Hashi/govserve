@@ -114,6 +114,9 @@ describe('notification planner (FR-100)', () => {
       ].map((t) => one(ctx(t)).template),
     );
     produced.add('APPOINTMENT_SCHEDULED').add('APPOINTMENT_CHANGED').add('COPY_ISSUED');
+    produced.add(
+      one({ type: 'AUDIT_CHAIN_BROKEN', payload: { chainSeq: '42' }, application: null }).template,
+    );
     expect([...produced].sort()).toEqual([...EventTemplates].sort());
   });
 });

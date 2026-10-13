@@ -28,7 +28,7 @@ import { type AuthUser } from '../auth/auth.types';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { ReqCtx, type RequestContext } from '../common/request-context';
-import { ApiZodBody, ApiZodResponse, ZodPipe } from '../common/zod';
+import { ApiZodBody, ApiZodQuery, ApiZodResponse, ZodPipe } from '../common/zod';
 import { SearchService } from '../search/search.service';
 import { ApplicationsService } from './applications.service';
 
@@ -69,6 +69,7 @@ export class ApplicationsController {
   }
 
   @Get('applications')
+  @ApiZodQuery(MyApplicationsQuerySchema)
   @ApiOperation({
     summary: 'My applications',
     description:

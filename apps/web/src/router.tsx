@@ -195,6 +195,30 @@ export const routes: RouteObject[] = [
             ),
           },
           {
+            path: 'audit',
+            element: (
+              <RequireRole roles={['SUPERVISOR']}>
+                <Outlet />
+              </RequireRole>
+            ),
+            children: [
+              {
+                index: true,
+                ...page(() =>
+                  import('./routes/officer/AuditPage').then((m) => ({ Component: m.AuditPage })),
+                ),
+              },
+              {
+                path: 'applications/:id',
+                ...page(() =>
+                  import('./routes/officer/ApplicationAuditPage').then((m) => ({
+                    Component: m.ApplicationAuditPage,
+                  })),
+                ),
+              },
+            ],
+          },
+          {
             path: 'dashboard',
             element: (
               <RequireRole roles={['SUPERVISOR']}>
@@ -297,6 +321,14 @@ export const routes: RouteObject[] = [
             ...page(() =>
               import('./routes/admin/VersionEditorPage').then((m) => ({
                 Component: m.VersionEditorPage,
+              })),
+            ),
+          },
+          {
+            path: 'audit',
+            ...page(() =>
+              import('./routes/admin/AdminAuditPage').then((m) => ({
+                Component: m.AdminAuditPage,
               })),
             ),
           },

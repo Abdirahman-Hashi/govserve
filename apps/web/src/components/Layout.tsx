@@ -32,6 +32,7 @@ function navFor(role: Role | null): NavItem[] {
         ...(role === 'SUPERVISOR'
           ? [
               { to: '/officer/dashboard', label: t.nav.dashboard },
+              { to: '/officer/audit', label: t.nav.audit },
               { to: '/officer/refunds', label: t.nav.refunds },
             ]
           : []),
@@ -41,6 +42,7 @@ function navFor(role: Role | null): NavItem[] {
       return [
         { to: '/admin', label: t.nav.admin, end: true },
         { to: '/admin/dashboard', label: t.nav.dashboard },
+        { to: '/admin/audit', label: t.nav.audit },
         { to: '/admin/staff', label: t.nav.staff },
         { to: '/admin/services', label: t.nav.catalogueAdmin },
         { to: '/admin/config', label: t.nav.configuration },

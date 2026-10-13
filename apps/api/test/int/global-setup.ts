@@ -1,4 +1,7 @@
 import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 /**
  * Point Testcontainers at the active Docker context when DOCKER_HOST is unset
@@ -6,6 +9,10 @@ import { execFileSync } from 'node:child_process';
  * CI runners use the default socket and skip this.
  */
 export default function globalSetup(): void {
+  // Each harness appends the audit actions its database saw; global-teardown checks coverage.
+  const observed = join(tmpdir(), `govserve-audit-observed-${process.pid}.txt`);
+  writeFileSync(observed, '');
+  process.env['AUDIT_OBSERVED_FILE'] = observed;
   if (process.env['DOCKER_HOST']) return;
   try {
     const host = execFileSync(

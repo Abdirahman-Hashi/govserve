@@ -32,14 +32,15 @@ describe('Search query plans on 100k rows (integration)', () => {
       orderBy: { code: 'asc' },
     });
     const keyId = (await h.prisma.signingKey.findFirstOrThrow()).id;
+    // Seeding needs the owner (DDL, ANALYZE); the queries below run as the app's restricted role.
     // A plain table: a TEMP table would live on one pooled connection only.
-    await h.prisma.$executeRawUnsafe(`CREATE TABLE seed_svc (i int, sid uuid, vid uuid, did uuid)`);
+    await h.owner.$executeRawUnsafe(`CREATE TABLE seed_svc (i int, sid uuid, vid uuid, did uuid)`);
     for (const [i, s] of services.entries()) {
       await h.prisma
         .$executeRaw`INSERT INTO seed_svc VALUES (${i}, ${s.id}::uuid, ${s.versions[0]!.id}::uuid, ${s.departmentId}::uuid)`;
     }
     const n = services.length;
-    await h.prisma.$transaction(
+    await h.owner.$transaction(
       async (tx) => {
         await tx.$executeRawUnsafe(`
           INSERT INTO "user" ("id", "email", "fullName", "phoneBidx", "role", "status", "updatedAt")
@@ -83,8 +84,8 @@ describe('Search query plans on 100k rows (integration)', () => {
       },
       { timeout: 300_000 },
     );
-    await h.prisma.$executeRawUnsafe(`DROP TABLE seed_svc`);
-    await h.prisma.$executeRawUnsafe(
+    await h.owner.$executeRawUnsafe(`DROP TABLE seed_svc`);
+    await h.owner.$executeRawUnsafe(
       `ANALYZE "user", "application", "application_data", "payment", "receipt", "citizen_profile"`,
     );
 

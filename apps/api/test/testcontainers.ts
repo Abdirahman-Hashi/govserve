@@ -4,10 +4,14 @@ import { resolve } from 'node:path';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { RedisContainer, type StartedRedisContainer } from '@testcontainers/redis';
 import { CreateBucketCommand, S3Client } from '@aws-sdk/client-s3';
+import { Client } from 'pg';
 import { GenericContainer, type StartedTestContainer, Wait } from 'testcontainers';
 
 export interface TestInfra {
+  /** Owner (superuser in the container): migrations, seeding, the tamper test. */
   databaseUrl: string;
+  /** The restricted application role the app runs as, as in production. */
+  appDatabaseUrl: string;
   redisUrl: string;
   s3Endpoint: string;
   postgres: StartedPostgreSqlContainer;
@@ -54,8 +58,20 @@ export async function startTestInfra(): Promise<TestInfra> {
       stdio: 'pipe',
     });
   }
+  // The app runs as a member of govserve_app_rw, so every test exercises the production grants.
+  const password = randomBytes(12).toString('hex');
+  const admin = new Client({ connectionString: databaseUrl });
+  await admin.connect();
+  await admin.query(
+    `CREATE ROLE govserve_app LOGIN PASSWORD '${password}' IN ROLE govserve_app_rw`,
+  );
+  await admin.end();
+  const appUrl = new URL(databaseUrl);
+  appUrl.username = 'govserve_app';
+  appUrl.password = password;
   return {
     databaseUrl,
+    appDatabaseUrl: appUrl.toString(),
     redisUrl: redis.getConnectionUrl(),
     s3Endpoint,
     postgres,
@@ -69,7 +85,7 @@ export async function startTestInfra(): Promise<TestInfra> {
 
 /** A complete, valid environment for booting AppModule in tests. */
 export function testEnv(
-  infra: Pick<TestInfra, 'databaseUrl' | 'redisUrl' | 's3Endpoint'>,
+  infra: Pick<TestInfra, 'databaseUrl' | 'appDatabaseUrl' | 'redisUrl' | 's3Endpoint'>,
 ): Record<string, string> {
   return {
     NODE_ENV: 'test',
@@ -78,6 +94,7 @@ export function testEnv(
     RATE_LIMIT_ENABLED: 'false',
     CORS_ORIGINS: 'http://localhost:5173',
     DATABASE_URL: infra.databaseUrl,
+    DATABASE_APP_URL: infra.appDatabaseUrl,
     REDIS_URL: infra.redisUrl,
     S3_ENDPOINT: infra.s3Endpoint,
     S3_REGION: 'us-east-1',

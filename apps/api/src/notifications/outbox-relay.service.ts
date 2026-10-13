@@ -79,12 +79,14 @@ export class OutboxRelayService {
     const intents = plan(ctx);
     const ids: string[] = [];
     for (const i of intents) {
-      const app = ctx.application!;
+      const app = ctx.application;
       const users = await tx.user.findMany({
         where:
-          i.recipients === 'APPLICANT'
-            ? { id: app.applicantId }
-            : { role: 'SUPERVISOR', status: 'ACTIVE', departmentId: app.departmentId },
+          i.recipients === 'ADMINS'
+            ? { role: 'ADMIN', status: 'ACTIVE' }
+            : i.recipients === 'APPLICANT'
+              ? { id: app!.applicantId }
+              : { role: 'SUPERVISOR', status: 'ACTIVE', departmentId: app!.departmentId },
         select: { id: true, notificationPreference: true },
       });
       for (const user of users) {

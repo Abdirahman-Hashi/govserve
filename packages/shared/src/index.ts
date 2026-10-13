@@ -11,3 +11,4 @@ export * from './review.js';
 export * from './notifications.js';
 export * from './search.js';
 export * from './reports.js';
+export * from './audit.js';

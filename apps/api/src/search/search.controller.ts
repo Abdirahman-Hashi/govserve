@@ -19,7 +19,7 @@ import { type AuthUser } from '../auth/auth.types';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { ReqCtx, type RequestContext } from '../common/request-context';
-import { ApiZodBody, ApiZodResponse, ZodPipe } from '../common/zod';
+import { ApiZodBody, ApiZodQuery, ApiZodResponse, ZodPipe } from '../common/zod';
 import { SearchService } from './search.service';
 
 const badQuery = { status: 422, description: 'VALIDATION_FAILED' };
@@ -38,6 +38,7 @@ export class SearchController {
 
   @Get('payments')
   @Roles('CITIZEN')
+  @ApiZodQuery(MyPaymentsQuerySchema)
   @ApiOperation({
     summary: 'My payments and receipts',
     description:

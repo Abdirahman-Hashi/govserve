@@ -155,6 +155,9 @@ export const SettingSchemas = {
   'appointment.maxReschedules': z.number().int().min(0).max(10),
   'retention.documentYears': z.number().int().min(1).max(50),
   'retention.draftDays': z.number().int().min(7).max(3650),
+  'retention.closedUploadDays': z.number().int().min(7).max(3650),
+  'retention.unverifiedDays': z.number().int().min(1).max(90),
+  'retention.pruneDays': z.number().int().min(7).max(365),
   'calendar.workingWeek': z
     .array(z.enum(Weekdays))
     .min(1)
@@ -173,6 +176,9 @@ export const SETTING_DEFAULTS: { [K in SettingKey]: z.infer<(typeof SettingSchem
   'appointment.maxReschedules': 2,
   'retention.documentYears': 7,
   'retention.draftDays': 90,
+  'retention.closedUploadDays': 90,
+  'retention.unverifiedDays': 7,
+  'retention.pruneDays': 30,
   'calendar.workingWeek': ['SAT', 'SUN', 'MON', 'TUE', 'WED', 'THU'],
 };
 
