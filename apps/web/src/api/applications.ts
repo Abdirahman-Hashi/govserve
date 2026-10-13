@@ -1,6 +1,5 @@
 import {
   ApplicationDetailSchema,
-  ApplicationSummarySchema,
   DocumentSchema,
   DownloadTicketSchema,
   type RequestUploadRequest,
@@ -8,19 +7,10 @@ import {
   UploadTicketSchema,
 } from '@govserve/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { z } from 'zod';
 import { api } from './client';
 
 const listKey = ['applications'] as const;
 const detailKey = (id: string) => ['applications', id] as const;
-
-export function useMyApplications() {
-  return useQuery({
-    queryKey: listKey,
-    queryFn: ({ signal }) =>
-      api('/api/v1/applications', { schema: z.array(ApplicationSummarySchema), signal }),
-  });
-}
 
 export function useApplication(id: string, opts: { pollWhileAwaitingPayment?: boolean } = {}) {
   return useQuery({
@@ -55,7 +45,13 @@ export function useSaveApplication(id: string) {
   return useMutation({
     mutationFn: (body: UpdateApplicationRequest) =>
       api(`/api/v1/applications/${id}`, { method: 'PATCH', body, schema: ApplicationDetailSchema }),
-    onSuccess: (app) => qc.setQueryData(detailKey(id), app),
+    // A read that started before this save (e.g. the upload-status poll) must not land after it
+    // and overwrite the saved values with stale ones.
+    onMutate: () => qc.cancelQueries({ queryKey: detailKey(id) }),
+    onSuccess: async (app) => {
+      await qc.cancelQueries({ queryKey: detailKey(id) });
+      qc.setQueryData(detailKey(id), app);
+    },
   });
 }
 

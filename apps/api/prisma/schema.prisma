@@ -432,7 +432,9 @@ model Application {
   // Partial unique index for FR-031 is in the migration SQL.
   @@index([departmentId, status, slaDueAt])
   @@index([assigneeId, status])
-  @@index([applicantId, createdAt(sort: Desc)])
+  // Keyset pagination (FR-110/FR-111): (createdAt DESC, id DESC) within the caller's scope.
+  @@index([applicantId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([departmentId, createdAt(sort: Desc), id(sort: Desc)])
   @@index([status, updatedAt])
   @@map("application")
 }
@@ -685,7 +687,8 @@ model Payment {
   receipt     Receipt?
 
   // Partial unique index on (channel, provider, referenceNorm) for non-REJECTED rows is in the migration SQL.
-  @@index([applicationId])
+  @@index([applicationId, createdAt])
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
   @@index([status, createdAt])
   @@map("payment")
 }

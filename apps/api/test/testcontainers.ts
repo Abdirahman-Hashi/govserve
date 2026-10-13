@@ -91,6 +91,7 @@ export function testEnv(
     NOTIFY_ATTEMPTS: '3',
     NOTIFY_BACKOFF_MS: '50',
     OUTBOX_POLL_MS: '300',
+    SEARCH_EXPORT_CAP: '7',
     CLAMAV_HOST: 'localhost',
     CLAMAV_PORT: '3310',
     WEB_ORIGIN: 'http://localhost:5173',

@@ -12,7 +12,7 @@ Tick a phase only when lint, typecheck and tests are green and the phase's accep
 | 05 | Fee assessment, payments, verifiable receipts | 04 | [x] |
 | 06 | Officer work queues + review workflow | 04, 05 | [x] |
 | 07 | Email notifications | 06 | [x] |
-| 08 | Search + application/transaction history | 06 | [ ] |
+| 08 | Search + application/transaction history | 06 | [x] |
 | 09 | Management dashboard | 05, 06 | [ ] |
 | 10 | Audit trail hardening + OpenAPI polish | 02–09 | [ ] |
 | 11 | Production Docker, CI/CD, cloud deploy | 10 | [ ] |
@@ -44,3 +44,6 @@ Follow-ups: supervisor assign UI needs a staff picker; appointment/correction/de
 
 **Phase 07 (2026-10-14):** Outbox relay (SKIP LOCKED, 5 s BullMQ schedule) turns FR-100 events into Notification rows, unique per event, channel and recipient, then delivers them on a BullMQ queue (exponential retries, then DEAD plus the `notifications-dead` queue; SENT rows never resend). English HTML + text templates carry only the first name, reference, portal link and appointment time/place. Codes and invitations are sent directly and logged without secrets (ADR-0008). SLA-breach job alerts department supervisors once. Opt-out of the three optional messages is audited. Web: in-app list with an unread badge, plus an email preference toggle.
 Follow-ups: choose the production SMTP provider; operator view/alert for dead-lettered emails (Phase 10/11); SMS adapter only if needed (port is channel-agnostic); web entry bundle about 182 KB gz.
+
+**Phase 08 (2026-10-14):** Citizen history (`GET /applications` now keyset-paged with filters, new `GET /payments` with receipts) and department-scoped staff search over applications and payments (reference via trigram, receipt and certificate numbers, names via 'simple' full-text prefixes, national ID and phone via blind indexes only, status, service, dates, channel, cents range). Staff criteria are sent in POST bodies so PII never appears in URLs. Supervisor CSV export is streamed, capped at 50,000 rows, formula-safe and audited without identifying values. 100k-row EXPLAIN ANALYZE plans are in docs/perf/search-plans.md (no sequential scans; IN…UNION rewrite for name and national ID). Also fixed a Phase 04 race where a stale application read could overwrite a just-saved copy count.
+Follow-ups: decide whether staff searches by national ID or phone should be audited as reads (Phase 10); form phone answers have no blind index (applicant account phone only); web entry bundle about 177 KB gz.

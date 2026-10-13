@@ -67,7 +67,8 @@ test('should complete a police clearance application end to end on a slow phone 
   const rows = page
     .getByRole('listitem')
     .filter({ hasText: /National ID card or passport|Passport-size photo/ });
-  await expect(rows.filter({ hasText: 'Uploaded' })).toHaveCount(2, { timeout: 60_000 });
+  // '✓ Uploaded' exactly: a plain 'Uploaded' would also match 'Not uploaded yet'.
+  await expect(rows.filter({ hasText: /✓ Uploaded/ })).toHaveCount(2, { timeout: 60_000 });
   await page.getByRole('button', { name: 'Continue' }).click();
 
   // Step 3: review, one extra copy, submit.

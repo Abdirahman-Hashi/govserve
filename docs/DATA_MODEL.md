@@ -111,7 +111,8 @@ enum {SELF, SELF_OR_CHILD}`.
 | submittedAt, queuedAt, decidedAt | timestamptz? | |
 | version | int | optimistic lock |
 Indexes: **partial unique (applicantId, serviceId, subjectKey) WHERE kind='STANDARD' AND status IN (open states)**
-(FR-031); (departmentId, status, slaDueAt) for queues; (assigneeId, status); (applicantId, createdAt desc);
+(FR-031); (departmentId, status, slaDueAt) for queues; (assigneeId, status); keyset (applicantId, createdAt desc, id desc) and
+(departmentId, createdAt desc, id desc) (Phase 08); GIN trigram on referenceNo for partial search;
 trigram on referenceNo.
 
 ### ApplicationData (1:1 Application)
@@ -308,3 +309,14 @@ erDiagram
 | Unverified citizen accounts | 7 days | Nightly job |
 | OtpCode, expired RefreshToken | 30 days after expiry | Nightly job |
 Legal sign-off: O-5.
+
+## Search indexes (Phase 08)
+- Full-text: GIN on `to_tsvector('simple', coalesce(user.fullName, ''))` and on `application_data.subjectFullName`
+  ('simple' configuration: Somali names are not stemmed). Queries use prefix terms (`hod:* & ali:*`).
+- Partial reference numbers: GIN `gin_trgm_ops` on `application.referenceNo`.
+- Keyset pagination on (createdAt DESC, id DESC): `application` per applicant and per department; `payment` globally and
+  (applicationId, createdAt).
+- National ID and phone are matched only through blind indexes (`citizen_profile.nationalIdBidx`,
+  `application_data.subjectNationalIdBidx`, `user.phoneBidx`).
+- Plans on 100,000 seeded rows: docs/perf/search-plans.md.
+

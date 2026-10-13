@@ -40,7 +40,7 @@ export async function applyForPoliceClearance(page: Page): Promise<void> {
   await page
     .getByLabel(/Choose file: Passport-size photo/)
     .setInputFiles({ name: 'me.jpg', mimeType: 'image/jpeg', buffer: jpeg });
-  await expect(page.getByRole('listitem').filter({ hasText: 'Uploaded' })).toHaveCount(2, {
+  await expect(page.getByRole('listitem').filter({ hasText: /✓ Uploaded/ })).toHaveCount(2, {
     timeout: 30_000,
   });
   await page.getByRole('button', { name: 'Continue' }).click();

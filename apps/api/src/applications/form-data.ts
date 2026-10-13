@@ -45,7 +45,10 @@ export function childSubjectIdentity(values: FormValues): string {
 }
 
 /** Plain answers merged with the decrypted PII blob. */
-export function readFormValues(crypto: CryptoService, data: Pick<ApplicationData, 'data' | 'piiEnc'> | null): FormValues {
+export function readFormValues(
+  crypto: CryptoService,
+  data: Pick<ApplicationData, 'data' | 'piiEnc'> | null,
+): FormValues {
   if (!data) return {};
   const pii = data.piiEnc ? (JSON.parse(crypto.decrypt(data.piiEnc)) as FormValues) : {};
   return { ...(data.data as FormValues), ...pii };

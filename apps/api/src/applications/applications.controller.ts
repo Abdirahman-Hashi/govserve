@@ -9,24 +9,27 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   type ApplicationDetail,
   ApplicationDetailSchema,
-  type ApplicationSummary,
-  ApplicationSummarySchema,
+  type ApplicationPage,
+  ApplicationPageSchema,
+  type MyApplicationsQuery,
+  MyApplicationsQuerySchema,
   type CreateApplicationRequest,
   CreateApplicationRequestSchema,
   type UpdateApplicationRequest,
   UpdateApplicationRequestSchema,
 } from '@govserve/shared';
-import { z } from 'zod';
 import { type AuthUser } from '../auth/auth.types';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { ReqCtx, type RequestContext } from '../common/request-context';
 import { ApiZodBody, ApiZodResponse, ZodPipe } from '../common/zod';
+import { SearchService } from '../search/search.service';
 import { ApplicationsService } from './applications.service';
 
 const uuid = new ParseUUIDPipe();
@@ -43,7 +46,10 @@ const conflict = {
 @ApiResponse({ status: 403, description: 'FORBIDDEN (not a citizen)' })
 @Controller()
 export class ApplicationsController {
-  constructor(private readonly applications: ApplicationsService) {}
+  constructor(
+    private readonly applications: ApplicationsService,
+    private readonly search: SearchService,
+  ) {}
 
   @Post('applications')
   @ApiOperation({
@@ -63,10 +69,19 @@ export class ApplicationsController {
   }
 
   @Get('applications')
-  @ApiOperation({ summary: 'My applications', description: 'Roles: CITIZEN. Newest first.' })
-  @ApiZodResponse(200, z.array(ApplicationSummarySchema))
-  list(@CurrentUser() user: AuthUser): Promise<ApplicationSummary[]> {
-    return this.applications.list(user);
+  @ApiOperation({
+    summary: 'My applications',
+    description:
+      'Roles: CITIZEN (own only). Newest first, keyset pages of 25; filter by status, service, dates and part of the reference number.',
+  })
+  @ApiZodResponse(200, ApplicationPageSchema)
+  @ApiResponse({ status: 422, description: 'VALIDATION_FAILED' })
+  @ApiResponse({ status: 400, description: 'INVALID_CURSOR' })
+  list(
+    @CurrentUser() user: AuthUser,
+    @Query(new ZodPipe(MyApplicationsQuerySchema)) q: MyApplicationsQuery,
+  ): Promise<ApplicationPage> {
+    return this.search.myApplications(user, q);
   }
 
   @Get('applications/:id')

@@ -129,6 +129,14 @@ export const routes: RouteObject[] = [
             ),
           },
           {
+            path: 'payments',
+            ...page(() =>
+              import('./routes/citizen/MyPaymentsPage').then((m) => ({
+                Component: m.MyPaymentsPage,
+              })),
+            ),
+          },
+          {
             path: 'certificates',
             ...page(() =>
               import('./routes/citizen/CertificatesPage').then((m) => ({
@@ -150,6 +158,12 @@ export const routes: RouteObject[] = [
             index: true,
             ...page(() =>
               import('./routes/officer/OfficerHome').then((m) => ({ Component: m.OfficerHome })),
+            ),
+          },
+          {
+            path: 'search',
+            ...page(() =>
+              import('./routes/officer/SearchPage').then((m) => ({ Component: m.SearchPage })),
             ),
           },
           {

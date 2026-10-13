@@ -17,6 +17,7 @@ function navFor(role: Role | null): NavItem[] {
     case 'CITIZEN':
       return [
         { to: '/citizen', label: t.nav.citizen, end: true },
+        { to: '/citizen/payments', label: t.nav.myPayments },
         { to: '/citizen/certificates', label: t.nav.certificates },
         { to: '/services', label: t.nav.services },
         { to: '/account/profile', label: t.nav.profile },
@@ -25,6 +26,7 @@ function navFor(role: Role | null): NavItem[] {
     case 'SUPERVISOR':
       return [
         { to: '/officer', label: t.nav.officer, end: true },
+        { to: '/officer/search', label: t.nav.search },
         { to: '/officer/payments', label: t.nav.payments },
         { to: '/officer/cash', label: t.nav.cashDesk },
         ...(role === 'SUPERVISOR' ? [{ to: '/officer/refunds', label: t.nav.refunds }] : []),

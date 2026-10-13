@@ -97,5 +97,19 @@ test.describe('officer review', () => {
     await page.getByLabel('Full name').fill('Amina Hassan Warsame');
     await page.getByRole('button', { name: 'Check name' }).click();
     await expect(page.getByText('The name matches the certificate holder.')).toBeVisible();
+
+    // Search and history (Phase 08): the officer finds it by part of the reference…
+    await officer.getByRole('link', { name: 'Search' }).click();
+    await officer.getByLabel('Reference number (part)').fill(reference.slice(-6));
+    await officer.getByRole('button', { name: 'Search', exact: true }).click();
+    await expect(
+      officer.getByTestId('application-results').getByRole('link', { name: reference }),
+    ).toBeVisible();
+    // …and the citizen filters their own list to issued certificates.
+    await page.goto('/citizen');
+    await page.getByText('Filter', { exact: true }).click();
+    await page.getByLabel('Status').selectOption('ISSUED');
+    await page.getByRole('button', { name: 'Apply filters' }).click();
+    await expect(page.getByTestId('my-applications').getByText(reference)).toBeVisible();
   });
 });

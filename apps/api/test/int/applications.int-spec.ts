@@ -1,8 +1,4 @@
-import {
-  type ApplicationDetail,
-  type ApplicationSummary,
-  type AuthSession,
-} from '@govserve/shared';
+import { type ApplicationDetail, type ApplicationPage, type AuthSession } from '@govserve/shared';
 import request from 'supertest';
 import { ApplicationsService } from '../../src/applications/applications.service';
 import { type ErrorEnvelope } from '../../src/common/filters/error-envelope.filter';
@@ -527,8 +523,8 @@ describe('Applications and documents (integration)', () => {
         .expect(404);
       await save(b.session, app.id, { extraCopies: 1 }).expect(404);
       const list = (await request(h.http()).get(`${api}/applications`).set(bearer(b.session)))
-        .body as ApplicationSummary[];
-      expect(list.map((x) => x.id)).not.toContain(app.id);
+        .body as ApplicationPage;
+      expect(list.items.map((x) => x.id)).not.toContain(app.id);
 
       // The owner gets a short-lived link that really serves the file.
       const ticket = await request(h.http())

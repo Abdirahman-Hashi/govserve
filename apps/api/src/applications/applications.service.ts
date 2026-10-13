@@ -178,16 +178,6 @@ export class ApplicationsService {
 
   // ─── Reads ──────────────────────────────────────────────────────────────────
 
-  async list(user: AuthUser): Promise<ApplicationSummary[]> {
-    const rows = await this.prisma.application.findMany({
-      where: { applicantId: user.id },
-      include: { service: true },
-      orderBy: { createdAt: 'desc' },
-      take: 200,
-    });
-    return rows.map((a) => toSummary(a, a.service));
-  }
-
   async get(user: AuthUser, id: string): Promise<ApplicationDetail> {
     return this.toDetail(user, await this.load(user, id));
   }

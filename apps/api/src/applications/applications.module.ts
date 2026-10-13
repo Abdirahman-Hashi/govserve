@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
 import { ConfigAdminModule } from '../config-admin/config-admin.module';
 import { MoneyModule } from '../payments/money.module';
+import { SearchModule } from '../search/search.module';
 import { ApplicationStateService } from './application-state.service';
 import { ApplicationsController } from './applications.controller';
 import { ApplicationsService } from './applications.service';
 
 @Module({
-  imports: [MoneyModule, ConfigAdminModule],
+  imports: [MoneyModule, ConfigAdminModule, SearchModule],
   controllers: [ApplicationsController],
   providers: [ApplicationStateService, ApplicationsService],
   exports: [ApplicationStateService, ApplicationsService],

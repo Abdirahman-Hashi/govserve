@@ -19,6 +19,7 @@ import { NotificationJobsModule } from './notifications/notification-jobs.module
 import { NotificationsModule } from './notifications/notifications.module';
 import { PaymentsModule } from './payments/payments.module';
 import { ReviewModule } from './review/review.module';
+import { SearchModule } from './search/search.module';
 import { UsersModule } from './users/users.module';
 import { LoggerModule } from './logging/logger.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -52,6 +53,7 @@ import { StorageModule } from './storage/storage.module';
     PaymentsModule,
     CertificatesModule,
     ReviewModule,
+    SearchModule,
     JobsModule,
     NotificationJobsModule,
     HealthModule,
