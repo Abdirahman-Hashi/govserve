@@ -7,7 +7,7 @@ Tick a phase only when lint, typecheck and tests are green and the phase's accep
 | 00 | Spec, data model, state machines, ADRs (no code) | — | [x] |
 | 01 | Monorepo scaffold, Docker Compose, CI skeleton | 00 | [x] |
 | 02 | Auth, JWT, RBAC, users | 01 | [x] |
-| 03 | Service catalogue + configurable forms + fee engine | 02 | [ ] |
+| 03 | Service catalogue + configurable forms + fee engine | 02 | [x] |
 | 04 | Applications + document uploads | 03 | [ ] |
 | 05 | Fee assessment, payments, verifiable receipts | 04 | [ ] |
 | 06 | Officer work queues + review workflow | 04, 05 | [ ] |
@@ -29,3 +29,6 @@ Follow-ups: web bundle is 198 KB gz of the 250 KB budget, so lazy-load routes in
 
 **Phase 02 (2026-10-13):** Citizen registration with email OTP, login with lockout, staff email-OTP device trust, JWT access + rotating refresh with reuse detection and Redis session revocation, admin-only staff invitations/role changes/deactivation, AES-256-GCM PII encryption with blind indexes, AuditLog (same-transaction writes), BullMQ purge of unverified accounts, admin bootstrap and permissions-matrix scripts; web auth pages, role-guarded lazy routes, profile and staff admin.
 Follow-ups: release claims on deactivation (Phase 06); audit hash chain and insert-only grants (Phase 10); main web bundle still 195 KB gz (mostly zod/react-dom); citizen ownership returns 404 per FR-012 (prompt said 403).
+
+**Phase 03 (2026-10-13):** Service catalogue with immutable versioned forms (JSON Schema subset validated by the same `validateFormData` in browser and API, no runtime codegen), required documents with any-one-of groups, base + per-copy fee rule, publish/retire with one live version per service; settings, holidays and reason codes; idempotent seed of the three pilot services (TEST fees) plus defaults; public catalogue with fee estimate and form preview; admin version editor with live preview.
+Follow-ups: official fees/validity/SLAs still O-1–O-3 (seed is TEST); district list and ID format unconfirmed (free text / generic pattern); main web bundle 204 KB gz, so add per-module subpath exports in packages/shared to keep the form validator out of the entry chunk; seed does not audit default settings/reason codes (system setup).

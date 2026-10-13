@@ -12,7 +12,9 @@ export function HomePage() {
       <ul className="grid gap-3 sm:grid-cols-3">
         {t.home.services.map((name) => (
           <li key={name} className="rounded-lg border border-slate-200 p-4 font-medium">
-            {name}
+            <Link to="/services" className="text-brand underline">
+              {name}
+            </Link>
           </li>
         ))}
       </ul>

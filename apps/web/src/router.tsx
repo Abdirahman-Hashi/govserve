@@ -22,6 +22,20 @@ export const routes: RouteObject[] = [
     children: [
       { index: true, element: <HomePage /> },
       {
+        path: 'services',
+        ...page(() =>
+          import('./routes/catalogue/CataloguePage').then((m) => ({ Component: m.CataloguePage })),
+        ),
+      },
+      {
+        path: 'services/:code',
+        ...page(() =>
+          import('./routes/catalogue/ServiceDetailPage').then((m) => ({
+            Component: m.ServiceDetailPage,
+          })),
+        ),
+      },
+      {
         ...guestOnly,
         children: [
           {
@@ -134,6 +148,36 @@ export const routes: RouteObject[] = [
             path: 'staff',
             ...page(() =>
               import('./routes/admin/StaffPage').then((m) => ({ Component: m.StaffPage })),
+            ),
+          },
+          {
+            path: 'services',
+            ...page(() =>
+              import('./routes/admin/AdminServicesPage').then((m) => ({
+                Component: m.AdminServicesPage,
+              })),
+            ),
+          },
+          {
+            path: 'services/:id',
+            ...page(() =>
+              import('./routes/admin/AdminServicePage').then((m) => ({
+                Component: m.AdminServicePage,
+              })),
+            ),
+          },
+          {
+            path: 'versions/:id',
+            ...page(() =>
+              import('./routes/admin/VersionEditorPage').then((m) => ({
+                Component: m.VersionEditorPage,
+              })),
+            ),
+          },
+          {
+            path: 'config',
+            ...page(() =>
+              import('./routes/admin/ConfigPage').then((m) => ({ Component: m.ConfigPage })),
             ),
           },
         ],

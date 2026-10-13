@@ -16,6 +16,7 @@ function navFor(role: Role | null): NavItem[] {
     case 'CITIZEN':
       return [
         { to: '/citizen', label: t.nav.citizen },
+        { to: '/services', label: t.nav.services },
         { to: '/account/profile', label: t.nav.profile },
       ];
     case 'OFFICER':
@@ -28,11 +29,14 @@ function navFor(role: Role | null): NavItem[] {
       return [
         { to: '/admin', label: t.nav.admin, end: true },
         { to: '/admin/staff', label: t.nav.staff },
+        { to: '/admin/services', label: t.nav.catalogueAdmin },
+        { to: '/admin/config', label: t.nav.configuration },
         { to: '/account/profile', label: t.nav.profile },
       ];
     default:
       return [
         { to: '/', label: t.nav.home, end: true },
+        { to: '/services', label: t.nav.services },
         { to: '/login', label: t.nav.signIn },
         { to: '/register', label: t.nav.register },
       ];

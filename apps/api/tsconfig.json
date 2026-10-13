@@ -10,5 +10,13 @@
     "baseUrl": ".",
     "types": ["node", "jest"]
   },
-  "include": ["src", "test", "scripts", "prisma.config.ts", "jest.config.ts", "jest.int.config.ts"]
+  "include": [
+    "src",
+    "test",
+    "scripts",
+    "prisma/seed.ts",
+    "prisma.config.ts",
+    "jest.config.ts",
+    "jest.int.config.ts"
+  ]
 }

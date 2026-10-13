@@ -55,6 +55,7 @@ model Department {
 
   users       User[]
   invitations StaffInvitation[]
+  services    Service[]
 
   @@map("department")
 }
@@ -205,4 +206,115 @@ model AuditLog {
   @@index([departmentId, occurredAt])
   @@index([action])
   @@map("audit_log")
+}
+
+// ─── Catalogue (DATA_MODEL §2) ──────────────────────────────────────────────
+
+enum InPersonStep {
+  NONE
+  FINGERPRINTS
+  APPEARANCE
+}
+
+enum ApprovalMode {
+  SINGLE
+  SUPERVISOR_SECOND
+  SUPERVISOR_ON_RECORD_FOUND
+}
+
+enum SubjectMode {
+  SELF
+  SELF_OR_CHILD
+}
+
+enum VersionStatus {
+  DRAFT
+  PUBLISHED
+  RETIRED
+}
+
+enum ReasonCodeKind {
+  REJECT
+  PAYMENT_REJECT
+  REVOKE
+  REFUND_DECLINE
+}
+
+model Service {
+  id                String       @id @default(uuid(7)) @db.Uuid
+  code              String       @unique
+  name              String
+  description       String
+  departmentId      String       @db.Uuid
+  active            Boolean      @default(true)
+  slaWorkingDays    Int
+  inPersonStep      InPersonStep
+  approvalMode      ApprovalMode
+  validityMonths    Int?
+  certificatePrefix String       @unique
+  subjectMode       SubjectMode
+  version           Int          @default(0)
+  createdAt         DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime     @updatedAt @db.Timestamptz(3)
+
+  department Department       @relation(fields: [departmentId], references: [id])
+  versions   ServiceVersion[]
+
+  @@map("service")
+}
+
+/// Immutable once PUBLISHED (FR-021); only DRAFT rows are ever updated.
+model ServiceVersion {
+  id                String        @id @default(uuid(7)) @db.Uuid
+  serviceId         String        @db.Uuid
+  versionNo         Int
+  status            VersionStatus @default(DRAFT)
+  formSchema        Json
+  uiSchema          Json
+  requiredDocuments Json
+  feeBaseCents      BigInt
+  feePerCopyCents   BigInt
+  feeIsTest         Boolean       @default(true)
+  publishedAt       DateTime?     @db.Timestamptz(3)
+  publishedById     String?       @db.Uuid
+  retiredAt         DateTime?     @db.Timestamptz(3)
+  createdById       String?       @db.Uuid
+  createdAt         DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime      @updatedAt @db.Timestamptz(3)
+
+  service Service @relation(fields: [serviceId], references: [id])
+
+  @@unique([serviceId, versionNo])
+  @@index([serviceId, status])
+  @@map("service_version")
+}
+
+model Setting {
+  key         String   @id
+  value       Json
+  updatedById String?  @db.Uuid
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  @@map("setting")
+}
+
+model Holiday {
+  date      DateTime @id @db.Date
+  name      String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("holiday")
+}
+
+model ReasonCode {
+  id        String         @id @default(uuid(7)) @db.Uuid
+  kind      ReasonCodeKind
+  code      String
+  label     String
+  active    Boolean        @default(true)
+  createdAt DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime       @updatedAt @db.Timestamptz(3)
+
+  @@unique([kind, code])
+  @@map("reason_code")
 }

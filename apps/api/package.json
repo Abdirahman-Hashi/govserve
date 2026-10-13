@@ -12,7 +12,8 @@
     "test:int": "prisma generate && jest --config jest.int.config.ts --runInBand",
     "openapi:export": "prisma generate && ts-node --swc scripts/export-openapi.ts",
     "admin:bootstrap": "prisma generate >/dev/null && ts-node --swc scripts/bootstrap-admin.ts",
-    "permissions:matrix": "prisma generate >/dev/null && ts-node --swc scripts/permissions-matrix.ts"
+    "permissions:matrix": "prisma generate >/dev/null && ts-node --swc scripts/permissions-matrix.ts",
+    "db:seed": "prisma generate >/dev/null && ts-node --swc prisma/seed.ts"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.24",

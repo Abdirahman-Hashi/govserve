@@ -7,6 +7,8 @@ import { RolesGuard } from './common/guards/roles.guard';
 import { APP_CONFIG, type AppConfig, ConfigModule } from './config/config.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
+import { CatalogueModule } from './catalogue/catalogue.module';
+import { ConfigAdminModule } from './config-admin/config-admin.module';
 import { CryptoModule } from './crypto/crypto.module';
 import { HealthModule } from './health/health.module';
 import { JobsModule } from './jobs/jobs.module';
@@ -35,6 +37,8 @@ import { RedisModule } from './redis/redis.module';
     NotificationsModule,
     AuthModule,
     UsersModule,
+    CatalogueModule,
+    ConfigAdminModule,
     JobsModule,
     HealthModule,
   ],

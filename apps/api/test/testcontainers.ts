@@ -21,11 +21,16 @@ export async function startTestInfra(): Promise<TestInfra> {
     new RedisContainer('redis:7-alpine').start(),
   ]);
   const databaseUrl = postgres.getConnectionUri();
-  execFileSync('pnpm', ['exec', 'prisma', 'migrate', 'deploy'], {
-    cwd: API_ROOT,
-    env: { ...process.env, DATABASE_URL: databaseUrl },
-    stdio: 'pipe',
-  });
+  for (const args of [
+    ['exec', 'prisma', 'migrate', 'deploy'],
+    ['run', 'db:seed'],
+  ]) {
+    execFileSync('pnpm', args, {
+      cwd: API_ROOT,
+      env: { ...process.env, DATABASE_URL: databaseUrl },
+      stdio: 'pipe',
+    });
+  }
   return {
     databaseUrl,
     redisUrl: redis.getConnectionUrl(),
