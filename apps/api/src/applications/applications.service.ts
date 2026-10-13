@@ -28,6 +28,8 @@ import {
   type Application,
   type ApplicationData,
   type ApplicationStatusHistory,
+  type Appointment,
+  type Certificate,
   type CorrectionItem,
   type CorrectionRequest,
   type Document,
@@ -43,7 +45,16 @@ import { PAYMENT_EVIDENCE, toDocumentDto, USABLE_STATUSES } from '../documents/d
 import { confirmedTotal, max } from '../payments/money';
 import { paymentInclude, type PaymentWithReceipt, toPaymentDto } from '../payments/payment.mapper';
 import { RefundsService } from '../payments/refunds.service';
-import { childSubjectIdentity, NATIONAL_ID_FIELD, splitPii, subjectName } from './form-data';
+import {
+  childSubjectIdentity,
+  NATIONAL_ID_FIELD,
+  readFormValues,
+  splitPii,
+  subjectName,
+} from './form-data';
+import { claimExpiry, resume } from './sla';
+import { certificateStatus } from '../certificates/certificate-status';
+import { ConfigAdminService } from '../config-admin/config-admin.service';
 
 type Full = Application & {
   service: Service;
@@ -54,6 +65,8 @@ type Full = Application & {
   feeAssessment: FeeAssessment | null;
   payments: PaymentWithReceipt[];
   corrections: (CorrectionRequest & { items: CorrectionItem[] })[];
+  appointments: Appointment[];
+  certificates: Certificate[];
 };
 
 const include = {
@@ -69,6 +82,8 @@ const include = {
   payments: { include: paymentInclude, orderBy: { createdAt: 'desc' } },
   feeAssessment: true,
   corrections: { where: { resolvedAt: null }, include: { items: true } },
+  appointments: { orderBy: { createdAt: 'asc' } },
+  certificates: { orderBy: { issuedAt: 'desc' }, take: 1 },
 } as const satisfies Prisma.ApplicationInclude;
 
 const OPEN_EXISTS = (existingId?: string) =>
@@ -102,6 +117,7 @@ export class ApplicationsService {
     private readonly crypto: CryptoService,
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
     private readonly refunds: RefundsService,
+    private readonly settings: ConfigAdminService,
   ) {}
 
   // ─── A1: create a draft ─────────────────────────────────────────────────────
@@ -356,7 +372,94 @@ export class ApplicationsService {
       const everClaimed = app.history.some((h) => h.toStatus === 'IN_REVIEW');
       if (!everClaimed)
         await this.refunds.requestForApplication(tx, app.id, 'WITHDRAWN_BEFORE_REVIEW');
-      // TODO(Phase 06): cancel scheduled appointments.
+      await tx.appointment.updateMany({
+        where: { applicationId: app.id, status: 'SCHEDULED' },
+        data: { status: 'CANCELLED' },
+      });
+    });
+    return this.get(user, id);
+  }
+
+  // ─── A12: resubmit after corrections ────────────────────────────────────────
+
+  async resubmit(user: AuthUser, id: string, ctx: RequestContext): Promise<ApplicationDetail> {
+    await this.prisma.$transaction(async (tx) => {
+      const app = await this.loadIn(tx, user, id);
+      this.state.assertAllowed({ application: app, to: 'IN_REVIEW', actor: user });
+      const request = app.corrections[0];
+      if (!request) throw notEditable();
+      const schema = formSchemaOf(app.serviceVersion);
+      const values = this.readValues(app.data);
+      const form = validateFormData(schema, values);
+      const problems: { path: string; message: string }[] = form.ok
+        ? []
+        : Object.entries(form.errors).map(([k, message]) => ({ path: `formData.${k}`, message }));
+      for (const item of request.items) {
+        if (item.kind === 'FIELD') {
+          const hash = this.crypto.keyedHash(
+            'correction',
+            JSON.stringify(values[item.target] ?? null),
+          );
+          if (hash === item.originalValueHash) {
+            problems.push({ path: `formData.${item.target}`, message: 'Correct this answer' });
+          }
+        } else if (
+          !app.documents.some(
+            (d) =>
+              d.docType === item.target && d.status === 'CLEAN' && d.createdAt > request.createdAt,
+          )
+        ) {
+          problems.push({ path: `documents.${item.target}`, message: 'Upload a new document' });
+        }
+      }
+      const docs = documentCompleteness(
+        app.serviceVersion.requiredDocuments as unknown as RequiredDocument[],
+        app.documents
+          .filter((d) => USABLE_STATUSES.includes(d.status))
+          .map((d) => ({ docType: d.docType, status: d.status })),
+      );
+      for (const t of [...docs.missing, ...docs.notReady]) {
+        problems.push({ path: `documents.${t}`, message: 'This document is missing or not ready' });
+      }
+      if (!form.ok || problems.length > 0) {
+        throw new UnprocessableEntityException({
+          code: 'VALIDATION_FAILED',
+          message: 'Please make the requested corrections before resubmitting.',
+          details: problems,
+        });
+      }
+      await this.writeValues(tx, app.id, schema, form.data);
+      const now = new Date();
+      await tx.correctionItem.updateMany({
+        where: { correctionRequestId: request.id },
+        data: { resolvedAt: now },
+      });
+      await tx.correctionRequest.update({ where: { id: request.id }, data: { resolvedAt: now } });
+      const assignee = app.assigneeId
+        ? await tx.user.findUnique({ where: { id: app.assigneeId }, select: { status: true } })
+        : null;
+      const resumed = await this.state.transition(tx, {
+        application: app,
+        to: 'IN_REVIEW',
+        actor: user,
+        ctx,
+        data: {
+          correctionDueAt: null,
+          claimExpiresAt: await claimExpiry(tx, this.settings, now),
+          ...resume(app, now),
+        },
+        details: { round: request.round },
+      });
+      // The officer who asked has left: back to the department queue (A9 by the system).
+      if (assignee?.status !== 'ACTIVE') {
+        await this.state.transition(tx, {
+          application: resumed,
+          to: 'QUEUED',
+          actor: 'SYSTEM',
+          note: 'Assignee no longer active',
+          data: { assigneeId: null, claimExpiresAt: null },
+        });
+      }
     });
     return this.get(user, id);
   }
@@ -415,9 +518,7 @@ export class ApplicationsService {
   }
 
   readValues(data: ApplicationData | null): FormValues {
-    if (!data) return {};
-    const pii = data.piiEnc ? (JSON.parse(this.crypto.decrypt(data.piiEnc)) as FormValues) : {};
-    return { ...(data.data as FormValues), ...pii };
+    return readFormValues(this.crypto, data);
   }
 
   private async writeValues(
@@ -502,6 +603,21 @@ export class ApplicationsService {
         ? max(app.feeAssessment.totalCents - paid, 0n)
         : 0n
       ).toString(),
+      appointments: app.appointments.map((ap) => ({
+        kind: ap.kind,
+        scheduledAt: ap.scheduledAt.toISOString(),
+        location: ap.location,
+        status: ap.status,
+      })),
+      certificate: app.certificates[0]
+        ? {
+            id: app.certificates[0].id,
+            certificateNo: app.certificates[0].certificateNo,
+            status: certificateStatus(app.certificates[0]),
+            issuedAt: app.certificates[0].issuedAt.toISOString(),
+            expiresAt: app.certificates[0].expiresAt?.toISOString() ?? null,
+          }
+        : null,
       allowedActions: allowedActions(this.state, app, user),
       editableFields: edit.fields,
       editableDocTypes: edit.docTypes,
@@ -555,6 +671,7 @@ function allowedActions(
   if (app.status === 'DRAFT') actions.push('EDIT', 'DELETE');
   if (can('AWAITING_PAYMENT')) actions.push('SUBMIT');
   if (app.status === 'CORRECTION_REQUESTED') actions.push('EDIT');
+  if (can('IN_REVIEW')) actions.push('RESUBMIT');
   if (can('WITHDRAWN')) actions.push('WITHDRAW');
   return actions;
 }

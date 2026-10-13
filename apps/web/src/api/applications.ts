@@ -59,7 +59,7 @@ export function useSaveApplication(id: string) {
   });
 }
 
-function useLifecycle(id: string, action: 'submit' | 'withdraw') {
+function useLifecycle(id: string, action: 'submit' | 'withdraw' | 'resubmit') {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () =>
@@ -76,6 +76,7 @@ function useLifecycle(id: string, action: 'submit' | 'withdraw') {
 
 export const useSubmitApplication = (id: string) => useLifecycle(id, 'submit');
 export const useWithdrawApplication = (id: string) => useLifecycle(id, 'withdraw');
+export const useResubmitApplication = (id: string) => useLifecycle(id, 'resubmit');
 
 export function useDeleteApplication(id: string) {
   const qc = useQueryClient();

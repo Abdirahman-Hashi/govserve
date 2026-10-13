@@ -10,7 +10,7 @@ Tick a phase only when lint, typecheck and tests are green and the phase's accep
 | 03 | Service catalogue + configurable forms + fee engine | 02 | [x] |
 | 04 | Applications + document uploads | 03 | [x] |
 | 05 | Fee assessment, payments, verifiable receipts | 04 | [x] |
-| 06 | Officer work queues + review workflow | 04, 05 | [ ] |
+| 06 | Officer work queues + review workflow | 04, 05 | [x] |
 | 07 | Email notifications | 06 | [ ] |
 | 08 | Search + application/transaction history | 06 | [ ] |
 | 09 | Management dashboard | 05, 06 | [ ] |
@@ -38,3 +38,6 @@ Follow-ups: verify the ClamAV adapter against a real clamd (`--profile scan`) be
 
 **Phase 05 (2026-10-13):** Payments (mobile money/bank evidence, cash desk, card via CardGateway port + mock with real HMAC webhooks, reconciliation) through a payment/refund state service (P1–P11, R1–R6) with event + audit + outbox per change; >$100 manual payments need a second, different supervisor; partial payments queue the application at the full fee (A5) with working-day SLA, overpayment recorded; refunds capped under row lock, auto-requested on withdrawal before review and A7 abandonment; gap-free Ed25519-signed receipts (PDF on demand, QR → public /verify/r with client-side signature check); officer queue, review, cash desk and supervisor refunds UI.
 Follow-ups: choose the real card gateway (O-7) and mobile-money list (O-9); browser-level staff fixtures for e2e (Phase 06); duplicate-certificate payments A6 (Phase 06); web entry bundle 207 KB gz.
+
+**Phase 06 (2026-10-14):** Department work queues with SLA risk (working days, paused during corrections and appointments), claim/claim-next/release/assign with optimistic versions and a claim-expiry job; masked review screen with audited unmask; corrections (max 3 rounds, 30-day deadline job with 7/1-day reminders, resubmit only when flagged items change), fingerprint/appearance appointments, approve, police referral (encrypted note), reject, supervisor second approval enforced by service and DB trigger; signed QR certificates (PDF on demand), supersede, paid duplicates (A6), supervisor revoke and chargeback resolution, public /verify/c with rate-limited name check; officer queue/review, citizen corrections and certificates UI; e2e staff fixture and desktop officer flow.
+Follow-ups: supervisor assign UI needs a staff picker; appointment/correction/decision emails ship with the Phase 07 outbox relay; legal wording per certificate (O-4); web entry bundle about 225 KB gz (208 KB index + 17 KB strings).

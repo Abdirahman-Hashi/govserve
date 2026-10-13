@@ -19,7 +19,7 @@ export const DocumentStatuses = [
   'REJECTED',
 ] as const;
 export type DocumentStatus = (typeof DocumentStatuses)[number];
-export const ApplicationActions = ['EDIT', 'SUBMIT', 'DELETE', 'WITHDRAW'] as const;
+export const ApplicationActions = ['EDIT', 'SUBMIT', 'DELETE', 'WITHDRAW', 'RESUBMIT'] as const;
 export type ApplicationAction = (typeof ApplicationActions)[number];
 
 // ─── Requests ────────────────────────────────────────────────────────────────
@@ -131,6 +131,25 @@ export const ApplicationDetailSchema = ApplicationSummarySchema.extend({
   /** Sum of CONFIRMED payments and what is still owed (cents as strings; '0' before assessment). */
   paidCents: z.string(),
   balanceCents: z.string(),
+  /** In-person appointments (scheduled ones show time and place). */
+  appointments: z.array(
+    z.object({
+      kind: z.enum(['FINGERPRINTS', 'APPEARANCE']),
+      scheduledAt: z.iso.datetime(),
+      location: z.string(),
+      status: z.enum(['SCHEDULED', 'ATTENDED', 'NO_SHOW', 'CANCELLED']),
+    }),
+  ),
+  /** The certificate issued for this application, if any. */
+  certificate: z
+    .object({
+      id: z.uuid(),
+      certificateNo: z.string(),
+      status: z.enum(['VALID', 'EXPIRED', 'REVOKED']),
+      issuedAt: z.iso.datetime(),
+      expiresAt: z.iso.datetime().nullable(),
+    })
+    .nullable(),
   /** What the caller may do now; decided by the server (the UI only shows or hides buttons). */
   allowedActions: z.array(z.enum(ApplicationActions)),
   /** During corrections, only these fields/documents can change; null means all (draft). */

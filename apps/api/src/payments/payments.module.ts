@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ApplicationsModule } from '../applications/applications.module';
+import { CertificatesModule } from '../certificates/certificates.module';
 import { ConfigAdminModule } from '../config-admin/config-admin.module';
 import { VerifyController } from '../receipts/verify.controller';
 import { MoneyModule } from './money.module';
@@ -8,7 +9,7 @@ import { PaymentsService } from './payments.service';
 import { CardWebhookController, MockGatewayController } from './webhooks.controller';
 
 @Module({
-  imports: [MoneyModule, ApplicationsModule, ConfigAdminModule],
+  imports: [MoneyModule, ApplicationsModule, ConfigAdminModule, CertificatesModule],
   controllers: [
     PaymentsController,
     RefundsController,

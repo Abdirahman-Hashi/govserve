@@ -15,7 +15,8 @@ function navFor(role: Role | null): NavItem[] {
   switch (role) {
     case 'CITIZEN':
       return [
-        { to: '/citizen', label: t.nav.citizen },
+        { to: '/citizen', label: t.nav.citizen, end: true },
+        { to: '/citizen/certificates', label: t.nav.certificates },
         { to: '/services', label: t.nav.services },
         { to: '/account/profile', label: t.nav.profile },
       ];

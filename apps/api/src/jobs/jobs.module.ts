@@ -4,6 +4,7 @@ import { ApplicationsModule } from '../applications/applications.module';
 import { APP_CONFIG, type AppConfig } from '../config/config.module';
 import { ConfigAdminModule } from '../config-admin/config-admin.module';
 import { PaymentsModule } from '../payments/payments.module';
+import { ReviewModule } from '../review/review.module';
 import {
   MAINTENANCE_QUEUE,
   MaintenanceProcessor,
@@ -26,6 +27,7 @@ import { PurgeService } from './purge.service';
     ApplicationsModule,
     ConfigAdminModule,
     PaymentsModule,
+    ReviewModule,
   ],
   providers: [PurgeService, MaintenanceProcessor, MaintenanceScheduler],
   exports: [PurgeService],

@@ -1,4 +1,6 @@
 import { type FormSchema, type FormValues, listPiiFields } from '@govserve/shared';
+import { type CryptoService } from '../crypto/crypto.service';
+import { type ApplicationData } from '../generated/prisma/client';
 
 /** Splits answers into plain values and the x-pii values that are stored encrypted (NFR-002). */
 export function splitPii(
@@ -40,4 +42,11 @@ export function childSubjectIdentity(values: FormValues): string {
   return [values['subjectFullName'], values['dateOfBirth'], values['motherFullName']]
     .map(norm)
     .join('|');
+}
+
+/** Plain answers merged with the decrypted PII blob. */
+export function readFormValues(crypto: CryptoService, data: Pick<ApplicationData, 'data' | 'piiEnc'> | null): FormValues {
+  if (!data) return {};
+  const pii = data.piiEnc ? (JSON.parse(crypto.decrypt(data.piiEnc)) as FormValues) : {};
+  return { ...(data.data as FormValues), ...pii };
 }

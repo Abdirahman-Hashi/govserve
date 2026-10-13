@@ -12,6 +12,7 @@ import {
   type StaffMember,
   type UpdateStaffRequest,
 } from '@govserve/shared';
+import { ReviewService } from '../review/review.service';
 import { AuditService, type AuditActor } from '../audit/audit.service';
 import { AUTH_POLICY } from '../auth/auth.constants';
 import { AuthService } from '../auth/auth.service';
@@ -42,6 +43,7 @@ export class StaffService {
     private readonly revocation: SessionRevocationService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(NOTIFICATION_PORT) private readonly notifier: NotificationPort,
+    private readonly review: ReviewService,
   ) {}
 
   async list(): Promise<StaffMember[]> {
@@ -177,7 +179,7 @@ export class StaffService {
         where: { userId, revokedAt: null },
         data: { revokedAt: new Date() },
       });
-      // TODO(Phase 06): release this officer's application claims (A9) in this transaction.
+      await this.review.releaseClaimsOf(tx, userId);
       await this.audit.record(tx, {
         actor: { id: caller.id, role: caller.role, type: 'USER' },
         action: 'USER_DEACTIVATED',

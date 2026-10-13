@@ -139,8 +139,11 @@ Police "record found" notes are stored encrypted with the review decision (Phase
 Index (applicationId, docType), (scanStatus, createdAt).
 
 ### CorrectionRequest / CorrectionItem
-`CorrectionRequest: id, applicationId FK, round int, requestedById, dueAt, resolvedAt?` unique(applicationId, round).
-`CorrectionItem: id, correctionRequestId FK, kind enum {FIELD, DOCUMENT}, target text (JSON pointer or docType), comment, resolvedAt?`.
+`CorrectionRequest: id, applicationId FK, round int, requestedById, dueAt, resolvedAt?, reminder7At?, reminder1At?`
+unique(applicationId, round). The reminder columns make the 7-day and 1-day reminders send once.
+`CorrectionItem: id, correctionRequestId FK, kind enum {FIELD, DOCUMENT}, target text (field name or docType), comment, resolvedAt?,
+originalValueHash?` — a keyed hash (domain `correction`) of the flagged answer when the round opened, so resubmission can require a
+change without storing the old PII value.
 
 ### Appointment
 `id, applicationId FK, kind enum {FINGERPRINTS, APPEARANCE}, scheduledAt, location, status enum {SCHEDULED, ATTENDED,
@@ -220,8 +223,9 @@ the issuing transaction.
 | duplicateOfId | FK Certificate? | |
 | supersededById | FK Certificate? | |
 | payloadJson, signature, keyId | jsonb, bytea, FK | ADR-0006 |
-| pdfStorageKey, pdfStatus enum {PENDING, READY, FAILED} | | rendered by job |
-Indexes: (serviceId, subjectKey, status); (holderUserId); unique(certificateNo).
+Indexes: (serviceId, subjectKey, status); (holderUserId); unique(certificateNo). Partial unique (serviceId, subjectKey) WHERE
+status = VALID AND duplicateOfId IS NULL (one valid original per subject). The PDF is rendered on demand from the signed payload
+and the application's answers, so nothing is stored (changed 2026-10-13, Phase 06; `pdfStorageKey` and `pdfStatus` dropped).
 
 ### SigningKey
 `id (keyId, text), algorithm 'Ed25519', publicKey bytea, status enum {ACTIVE, RETIRED}, activatedAt, retiredAt?`.

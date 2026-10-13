@@ -57,6 +57,8 @@ const awaiting = {
   payments: [],
   paidCents: '0',
   balanceCents: '1900',
+  appointments: [],
+  certificate: null,
   allowedActions: ['WITHDRAW'],
   editableFields: [],
   editableDocTypes: [],

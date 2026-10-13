@@ -11,10 +11,47 @@ import { ApiError } from '../../api/client';
 import { FormAlert } from '../../components/form';
 import { t } from '../../strings';
 import { ApplicationWizard } from './ApplicationWizard';
+import { CertificatePanel } from './CertificatePanel';
+import { CorrectionView } from './CorrectionView';
 import { PaymentList, PaymentPanel } from './PaymentPanel';
 import { StatusBadge } from './StatusBadge';
 
 const a = t.applications;
+
+function Appointments({ app }: { app: ApplicationDetail }) {
+  const ap = t.appointment;
+  if (app.appointments.length === 0) return null;
+  return (
+    <section
+      aria-labelledby="appointments"
+      className="space-y-2 rounded-lg border border-slate-300 p-4"
+    >
+      <h2 id="appointments" className="text-lg font-semibold">
+        {ap.heading}
+      </h2>
+      <ul className="space-y-2 text-sm">
+        {app.appointments.map((x) => (
+          <li key={x.scheduledAt}>
+            <p className="font-medium">
+              {ap.kinds[x.kind]} — {ap.statuses[x.status]}
+            </p>
+            <p>
+              <time dateTime={x.scheduledAt}>
+                {new Date(x.scheduledAt).toLocaleString('en-GB', {
+                  timeZone: 'Africa/Mogadishu',
+                  dateStyle: 'full',
+                  timeStyle: 'short',
+                })}
+              </time>{' '}
+              · {x.location}
+            </p>
+            {x.status === 'SCHEDULED' && <p className="text-slate-700">{ap.bring}</p>}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
 
 function StatusView({ app }: { app: ApplicationDetail }) {
   const withdraw = useWithdrawApplication(app.id);
@@ -41,6 +78,15 @@ function StatusView({ app }: { app: ApplicationDetail }) {
         )}
       </div>
       {error && <FormAlert>{error}</FormAlert>}
+
+      {(app.status === 'REFERRED' || app.status === 'REJECTED') && (
+        <p className="rounded-md border border-slate-400 bg-slate-50 p-3" data-testid="outcome">
+          {app.status === 'REFERRED' ? t.outcome.referred : t.outcome.rejected}
+        </p>
+      )}
+      {app.certificate && <CertificatePanel cert={app.certificate} />}
+      {app.status === 'CORRECTION_REQUESTED' && app.correction && <CorrectionView app={app} />}
+      <Appointments app={app} />
 
       {app.feeAssessment && (
         <section aria-labelledby="fee" className="space-y-2 rounded-lg border border-slate-300 p-4">

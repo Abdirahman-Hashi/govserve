@@ -9,6 +9,7 @@ import { ApplicationsModule } from './applications/applications.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { CatalogueModule } from './catalogue/catalogue.module';
+import { CertificatesModule } from './certificates/certificates.module';
 import { ConfigAdminModule } from './config-admin/config-admin.module';
 import { CryptoModule } from './crypto/crypto.module';
 import { DocumentsModule } from './documents/documents.module';
@@ -16,6 +17,7 @@ import { HealthModule } from './health/health.module';
 import { JobsModule } from './jobs/jobs.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PaymentsModule } from './payments/payments.module';
+import { ReviewModule } from './review/review.module';
 import { UsersModule } from './users/users.module';
 import { LoggerModule } from './logging/logger.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -47,6 +49,8 @@ import { StorageModule } from './storage/storage.module';
     ApplicationsModule,
     DocumentsModule,
     PaymentsModule,
+    CertificatesModule,
+    ReviewModule,
     JobsModule,
     HealthModule,
   ],

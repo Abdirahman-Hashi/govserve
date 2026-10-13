@@ -36,6 +36,8 @@ function draft(overrides: Partial<ApplicationDetail> = {}): ApplicationDetail {
     payments: [],
     paidCents: '0',
     balanceCents: '0',
+    appointments: [],
+    certificate: null,
     allowedActions: ['EDIT', 'DELETE'],
     editableFields: null,
     editableDocTypes: null,

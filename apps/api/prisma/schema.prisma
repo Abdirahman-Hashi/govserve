@@ -264,6 +264,7 @@ model Service {
   department   Department       @relation(fields: [departmentId], references: [id])
   versions     ServiceVersion[]
   applications Application[]
+  certificates Certificate[]
 
   @@map("service")
 }
@@ -420,6 +421,9 @@ model Application {
   corrections    CorrectionRequest[]
   feeAssessment  FeeAssessment?
   payments       Payment[]
+  appointments   Appointment[]
+  decisions      ReviewDecision[]
+  certificates   Certificate[]
 
   // Partial unique index for FR-031 is in the migration SQL.
   @@index([departmentId, status, slaDueAt])
@@ -496,6 +500,8 @@ model CorrectionRequest {
   requestedById String    @db.Uuid
   dueAt         DateTime  @db.Timestamptz(3)
   resolvedAt    DateTime? @db.Timestamptz(3)
+  reminder7At   DateTime? @db.Timestamptz(3)
+  reminder1At   DateTime? @db.Timestamptz(3)
   createdAt     DateTime  @default(now()) @db.Timestamptz(3)
 
   application Application      @relation(fields: [applicationId], references: [id], onDelete: Cascade)
@@ -512,6 +518,8 @@ model CorrectionItem {
   /// Field name (FIELD) or document type (DOCUMENT).
   target              String
   comment             String
+  /// Keyed hash of the field's value when the correction was requested (A12 requires a change).
+  originalValueHash   String?
   resolvedAt          DateTime?          @db.Timestamptz(3)
 
   request CorrectionRequest @relation(fields: [correctionRequestId], references: [id], onDelete: Cascade)
@@ -702,7 +710,126 @@ model SigningKey {
   activatedAt DateTime         @default(now()) @db.Timestamptz(3)
   retiredAt   DateTime?        @db.Timestamptz(3)
 
-  receipts Receipt[]
+  receipts     Receipt[]
+  certificates Certificate[]
 
   @@map("signing_key")
+}
+
+// ─── Review workflow and certificates (DATA_MODEL §3, §5; STATE_MACHINES §1, §4) ─
+
+enum AppointmentKind {
+  FINGERPRINTS
+  APPEARANCE
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  ATTENDED
+  NO_SHOW
+  CANCELLED
+}
+
+enum ReviewLevel {
+  OFFICER
+  SUPERVISOR
+}
+
+enum ReviewDecisionKind {
+  APPROVE
+  FORWARD
+  RETURN
+  REJECT
+  REFER
+}
+
+enum CertificateStatus {
+  VALID
+  REVOKED
+}
+
+enum RevokeReason {
+  FRAUD
+  ERROR
+  CHARGEBACK
+  SUPERSEDED
+}
+
+model Appointment {
+  id              String            @id @default(uuid(7)) @db.Uuid
+  applicationId   String            @db.Uuid
+  kind            AppointmentKind
+  scheduledAt     DateTime          @db.Timestamptz(3)
+  location        String
+  status          AppointmentStatus @default(SCHEDULED)
+  /// Birth registration: who appeared (names and roles).
+  attendees       Json?
+  scheduledById   String            @db.Uuid
+  recordedById    String?           @db.Uuid
+  recordedAt      DateTime?         @db.Timestamptz(3)
+  rescheduleCount Int               @default(0)
+  createdAt       DateTime          @default(now()) @db.Timestamptz(3)
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+  @@index([status, scheduledAt])
+  @@map("appointment")
+}
+
+/// Officer and supervisor decisions. A supervisor decision must not be by the officer who forwarded it (trigger).
+model ReviewDecision {
+  id            String             @id @default(uuid(7)) @db.Uuid
+  applicationId String             @db.Uuid
+  level         ReviewLevel
+  decision      ReviewDecisionKind
+  outcome       ReviewOutcome?
+  reasonCodeId  String?            @db.Uuid
+  /// Shown to the citizen (rejections, returns).
+  note          String?
+  /// Police "record found" details: encrypted, never shown online.
+  noteEnc       Bytes?
+  decidedById   String             @db.Uuid
+  decidedAt     DateTime           @default(now()) @db.Timestamptz(3)
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId, decidedAt])
+  @@map("review_decision")
+}
+
+/// Status VALID|REVOKED is stored; EXPIRED is derived from expiresAt. The PDF is rendered on demand.
+model Certificate {
+  id               String            @id @default(uuid(7)) @db.Uuid
+  certificateNo    String            @unique
+  applicationId    String            @db.Uuid
+  serviceId        String            @db.Uuid
+  holderUserId     String            @db.Uuid
+  subjectKey       String
+  /// Full name of the person the certificate is about (the child for a birth certificate).
+  holderName       String
+  holderNameMasked String
+  issuedAt         DateTime          @db.Timestamptz(3)
+  expiresAt        DateTime?         @db.Timestamptz(3)
+  status           CertificateStatus @default(VALID)
+  revokedAt        DateTime?         @db.Timestamptz(3)
+  revokedById      String?           @db.Uuid
+  revokeReason     RevokeReason?
+  revokeNote       String?
+  duplicateOfId    String?           @db.Uuid
+  supersededById   String?           @db.Uuid
+  payloadJson      Json
+  signature        Bytes
+  keyId            String
+  version          Int               @default(0)
+
+  application Application   @relation(fields: [applicationId], references: [id])
+  service     Service       @relation(fields: [serviceId], references: [id])
+  signingKey  SigningKey    @relation(fields: [keyId], references: [id])
+  duplicateOf Certificate?  @relation("Duplicates", fields: [duplicateOfId], references: [id])
+  duplicates  Certificate[] @relation("Duplicates")
+
+  @@index([serviceId, subjectKey, status])
+  @@index([holderUserId])
+  @@map("certificate")
 }

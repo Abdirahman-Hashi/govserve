@@ -24,6 +24,7 @@ import { assertCitizenOwns, assertSameDepartment } from '../common/guards/scope'
 import { type RequestContext } from '../common/request-context';
 import { addWorkingDays } from '../common/working-days';
 import { APP_CONFIG, type AppConfig } from '../config/config.module';
+import { CertificatesService } from '../certificates/certificates.service';
 import { ConfigAdminService } from '../config-admin/config-admin.service';
 import { PAYMENT_EVIDENCE } from '../documents/documents.mapper';
 import {
@@ -86,6 +87,7 @@ export class PaymentsService {
     private readonly receipts: ReceiptsService,
     private readonly refunds: RefundsService,
     private readonly settings: ConfigAdminService,
+    private readonly certificates: CertificatesService,
     @Inject(CARD_GATEWAY) private readonly gateway: CardGatewayPort,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
@@ -639,7 +641,37 @@ export class PaymentsService {
         },
       });
     }
-    // TODO(Phase 06): DUPLICATE applications issue the certificate copy here (A6).
+    if (fullyPaid && app.kind === 'DUPLICATE') {
+      // A6: the copy is issued at once; if the original stopped being valid meanwhile, the
+      // application stays put so an officer can refund it.
+      const full = await tx.application.findUniqueOrThrow({
+        where: { id: app.id },
+        include: { service: true },
+      });
+      const copy = await this.certificates.issueDuplicate(tx, full);
+      if (copy) {
+        await this.appState.transition(tx, {
+          application: app,
+          to: 'ISSUED',
+          actor: 'SYSTEM',
+          ...(ctx && { ctx }),
+          data: { decidedAt: new Date() },
+          details: { certificateNo: copy.certificateNo },
+        });
+      } else {
+        await this.appState.record(
+          tx,
+          app,
+          app.status,
+          null,
+          'SYSTEM',
+          'DUPLICATE_SOURCE_NOT_VALID',
+          {
+            ...(ctx && { ctx }),
+          },
+        );
+      }
+    }
   }
 
   private async threshold(): Promise<bigint> {

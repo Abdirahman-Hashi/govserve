@@ -23,3 +23,9 @@ export async function latestCode(request: APIRequestContext, to: string): Promis
     .toMatch(/^\d{6}$/);
   return code!;
 }
+
+/** Deletes earlier messages to `to`, so a reused address (e2e staff) never reads a stale code. */
+export async function clearMailbox(request: APIRequestContext, to: string): Promise<void> {
+  const res = await request.delete(`${MAILPIT}/api/v1/search`, { params: { query: `to:"${to}"` } });
+  expect(res.ok()).toBe(true);
+}

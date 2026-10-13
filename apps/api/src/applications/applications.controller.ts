@@ -160,4 +160,23 @@ export class ApplicationsController {
   ): Promise<ApplicationDetail> {
     return this.applications.withdraw(user, id, ctx);
   }
+
+  @Post('applications/:id/resubmit')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Resubmit after corrections',
+    description:
+      'Roles: CITIZEN (own only). Every flagged answer must change and every flagged document must be re-uploaded (A12).',
+  })
+  @ApiZodResponse(200, ApplicationDetailSchema)
+  @ApiResponse({ status: 422, description: 'VALIDATION_FAILED: lists what still needs correcting' })
+  @ApiResponse(conflict)
+  @ApiResponse(notYours)
+  resubmit(
+    @CurrentUser() user: AuthUser,
+    @Param('id', uuid) id: string,
+    @ReqCtx() ctx: RequestContext,
+  ): Promise<ApplicationDetail> {
+    return this.applications.resubmit(user, id, ctx);
+  }
 }

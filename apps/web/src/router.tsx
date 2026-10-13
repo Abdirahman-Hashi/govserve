@@ -120,6 +120,14 @@ export const routes: RouteObject[] = [
               })),
             ),
           },
+          {
+            path: 'certificates',
+            ...page(() =>
+              import('./routes/citizen/CertificatesPage').then((m) => ({
+                Component: m.CertificatesPage,
+              })),
+            ),
+          },
         ],
       },
       {
@@ -134,6 +142,12 @@ export const routes: RouteObject[] = [
             index: true,
             ...page(() =>
               import('./routes/officer/OfficerHome').then((m) => ({ Component: m.OfficerHome })),
+            ),
+          },
+          {
+            path: 'review/:id',
+            ...page(() =>
+              import('./routes/officer/ReviewPage').then((m) => ({ Component: m.ReviewPage })),
             ),
           },
           {
@@ -183,6 +197,14 @@ export const routes: RouteObject[] = [
         ...page(() =>
           import('./routes/verify/VerifyReceiptPage').then((m) => ({
             Component: m.VerifyReceiptPage,
+          })),
+        ),
+      },
+      {
+        path: 'verify/c/:certificateNo',
+        ...page(() =>
+          import('./routes/verify/VerifyCertificatePage').then((m) => ({
+            Component: m.VerifyCertificatePage,
           })),
         ),
       },

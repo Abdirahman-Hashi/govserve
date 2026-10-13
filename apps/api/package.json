@@ -11,6 +11,7 @@
     "test": "jest",
     "test:int": "prisma generate && jest --config jest.int.config.ts --runInBand",
     "openapi:export": "prisma generate && ts-node --swc scripts/export-openapi.ts",
+    "e2e:staff": "ts-node --swc scripts/e2e-staff.ts",
     "admin:bootstrap": "prisma generate >/dev/null && ts-node --swc scripts/bootstrap-admin.ts",
     "permissions:matrix": "prisma generate >/dev/null && ts-node --swc scripts/permissions-matrix.ts",
     "db:seed": "prisma generate >/dev/null && ts-node --swc prisma/seed.ts"

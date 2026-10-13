@@ -67,3 +67,15 @@ Settled in the Phase 0 interview. Details are in docs/SPEC.md, docs/SERVICES.md 
 - **One open application** per service and subject.
 - **Encrypted PII:** national ID, phone, DOB, mother's full name, parents' ID numbers.
 - **Bandwidth:** mobile-first, ≤250 KB initial JS, client-side image compression, autosave; no offline mode.
+
+## Phase 06 decisions (2026-10-13)
+- **Certificate PDFs are rendered on demand** from the signed payload (like receipts in Phase 05), not by a job, so there is no stored
+  PDF to purge or keep in sync. Every download is audited (`CERTIFICATE_DOWNLOADED`).
+- **Another department's application returns 403** (same as payments), not 404.
+- **Resubmission needs real changes:** each flagged answer must differ from its keyed hash taken when the round opened, and each flagged
+  document must be a clean upload made after the request.
+- **The resubmitted application goes back to the same officer.** If they are no longer active, it returns to the queue.
+- **Staff actions carry the version the officer saw** (optimistic locking). A stale action gets 409 `CONCURRENT_UPDATE`.
+- **The police "record found" note is encrypted** (`ReviewDecision.noteEnc`). It never appears in audit details, the outbox or citizen views.
+- **The supervisor "assign" action is API-only for now.** The UI needs a staff picker for supervisors, which is a follow-up.
+
