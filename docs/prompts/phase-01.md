@@ -7,7 +7,7 @@ Goal: an empty but production-shaped monorepo where every quality gate already r
 Build:
 - pnpm workspaces + Turborepo: apps/api (NestJS 11, strict TS), apps/web (React 19 + Vite + TS + React Router + TanStack Query + Tailwind), packages/shared (Zod schemas, shared types, money helpers, fee calculation, status enums; no Nest/React/Prisma imports, enforced by ESLint import boundaries per ADR-0001)
 - Prisma in apps/api with PostgreSQL 16; an initial baseline migration
-- infra/docker-compose.yml: postgres, redis (AOF persistence), minio, mailpit (dev SMTP), clamav (virus-scan adapter for Phase 4); healthchecks on each
+- infra/docker-compose.yml: postgres, redis (AOF persistence), objectstore (RustFS, ADR-0007), mailpit (dev SMTP), clamav (virus-scan adapter for Phase 4); healthchecks on each
 - Config module with Zod-validated env (fail fast on missing vars); .env.example documenting every var
 - Nest: global ValidationPipe, structured JSON logging (pino) with request IDs and PII redaction, Helmet, CORS allowlist, rate limiting, /health and /ready endpoints
 - Swagger at /api/docs generated from decorators; export openapi.json in CI

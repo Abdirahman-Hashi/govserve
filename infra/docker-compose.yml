@@ -1,0 +1,89 @@
+# Local development dependencies. Ports bind to 127.0.0.1 only.
+# Credentials here are dev-only defaults; real environments use the secret store (Phase 11).
+name: govserve
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: govserve
+      POSTGRES_PASSWORD: govserve_dev
+      POSTGRES_DB: govserve
+    ports: ['127.0.0.1:5433:5432'] # 5433 avoids clashing with other local Postgres instances
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U govserve -d govserve']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--appendonly', 'yes', '--appendfsync', 'everysec']
+    ports: ['127.0.0.1:6379:6379']
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # S3-compatible object storage (ADR-0004, ADR-0007). S3 API on :9000.
+  objectstore:
+    image: rustfs/rustfs:1.0.1
+    command: ['server', '--address', ':9000', '/data']
+    environment:
+      RUSTFS_ACCESS_KEY: govserve
+      RUSTFS_SECRET_KEY: govserve_dev_secret
+    ports: ['127.0.0.1:9000:9000']
+    volumes: [objectdata:/data]
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://localhost:9000/health']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Creates the private documents bucket once the object store is healthy, then exits.
+  objectstore-init:
+    image: amazon/aws-cli:2.27.50
+    depends_on:
+      objectstore: { condition: service_healthy }
+    environment:
+      AWS_ACCESS_KEY_ID: govserve
+      AWS_SECRET_ACCESS_KEY: govserve_dev_secret
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - >
+        aws --endpoint-url http://objectstore:9000 s3api head-bucket --bucket govserve-documents 2>/dev/null ||
+        aws --endpoint-url http://objectstore:9000 s3api create-bucket --bucket govserve-documents
+    restart: 'no'
+
+  mailpit:
+    image: axllent/mailpit:v1.31.5
+    ports: ['127.0.0.1:1025:1025', '127.0.0.1:8025:8025']
+    healthcheck:
+      test: ['CMD', '/mailpit', 'readyz']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Virus scanning (Phase 4). Needs ~1 GB RAM and 1–2 min to load signatures:
+  # start with `docker compose -f infra/docker-compose.yml --profile scan up -d`.
+  clamav:
+    image: clamav/clamav:1.5.4-debian
+    profiles: [scan]
+    ports: ['127.0.0.1:3310:3310']
+    volumes: [clamdata:/var/lib/clamav]
+    healthcheck:
+      test: ['CMD', 'clamdcheck.sh']
+      interval: 30s
+      timeout: 10s
+      start_period: 180s
+      retries: 10
+
+volumes:
+  pgdata:
+  redisdata:
+  objectdata:
+  clamdata:

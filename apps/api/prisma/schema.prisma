@@ -1,0 +1,13 @@
+// GovServe database schema. Entities are added phase by phase per docs/DATA_MODEL.md.
+// Partial unique indexes, check constraints, triggers and grants live in SQL migrations (ADR-0002).
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat        = "cjs"
+  importFileExtension = ""
+}
+
+datasource db {
+  provider = "postgresql"
+}

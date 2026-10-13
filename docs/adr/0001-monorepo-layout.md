@@ -20,7 +20,7 @@ Option 3. Layout:
 apps/api          NestJS 11 + Prisma (one module per bounded context)
 apps/web          React 19 + Vite + TS
 packages/shared   Zod schemas, DTO types, money (bigint cents) helpers, fee calculation, state enums
-infra/            docker-compose (postgres, redis, minio, mailpit, clamav)
+infra/            docker-compose (postgres, redis, S3-compatible objectstore, mailpit, clamav)
 docs/             spec, data model, state machines, ADRs, prompts
 ```
 `packages/shared` has no runtime dependencies on Nest or React. Root scripts (`dev, lint, typecheck, test, test:int,

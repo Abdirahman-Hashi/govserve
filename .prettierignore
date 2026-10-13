@@ -1,0 +1,7 @@
+pnpm-lock.yaml
+**/dist
+**/coverage
+**/playwright-report
+apps/api/openapi.json
+apps/api/src/generated
+.claude

@@ -7,7 +7,7 @@ Backend:
 - DRAFT → AWAITING_PAYMENT (transition A3): save and autosave drafts, validate formData against the version's JSON Schema server-side, check required documents present and CLEAN before submit; create the FeeAssessment on submit (fee function from Phase 3)
 - One open application per service + subject (FR-031): partial unique index plus a friendly 409
 - Delete draft (A2) and withdraw (A22) for the citizen; idle-draft purge job (A4)
-- Uploads: pre-signed PUT URLs to S3/MinIO; server verifies size, MIME by magic bytes (not extension), SHA-256 checksum; files private, downloads only via short-lived signed GET after an authorization check
+- Uploads: pre-signed PUT URLs to the S3-compatible store (RustFS locally, ADR-0007); server verifies size, MIME by magic bytes (not extension), SHA-256 checksum; files private, downloads only via short-lived signed GET after an authorization check
 - Virus-scan hook as a port (ClamAV adapter in docker-compose, no-op in unit tests); quarantine status until clean
 - A single ApplicationStateService performs every transition: checks actor role + department scope + guard, writes status history, AuditLog and an OutboxEvent in one transaction (ADR-0005), with an optimistic version check
 - Citizens may edit only in DRAFT, or in CORRECTION_REQUESTED where only the flagged CorrectionItems are unlocked (enforced server-side)

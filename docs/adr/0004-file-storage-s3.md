@@ -1,6 +1,6 @@
 # ADR 0004: S3-compatible object storage with pre-signed URLs
 
-- Status: accepted
+- Status: accepted (local store amended by ADR-0007)
 - Date: 2026-10-13
 
 ## Context

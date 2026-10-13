@@ -5,7 +5,7 @@ Services: @docs/SERVICES.md. Full spec: @docs/SPEC.md. Settled decisions: @docs/
 
 ## Stack
 pnpm + Turborepo monorepo · apps/api NestJS 11 + Prisma + PostgreSQL 16 · apps/web React 19 + TS + Vite
-· packages/shared Zod schemas · Redis + BullMQ (jobs) · S3-compatible storage (MinIO locally)
+· packages/shared Zod schemas · Redis + BullMQ (jobs) · S3-compatible storage (RustFS locally, ADR-0007)
 
 ## Commands
 - Start deps: `docker compose -f infra/docker-compose.yml up -d`
