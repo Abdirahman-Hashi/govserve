@@ -11,7 +11,7 @@ Tick a phase only when lint, typecheck and tests are green and the phase's accep
 | 04 | Applications + document uploads | 03 | [x] |
 | 05 | Fee assessment, payments, verifiable receipts | 04 | [x] |
 | 06 | Officer work queues + review workflow | 04, 05 | [x] |
-| 07 | Email notifications | 06 | [ ] |
+| 07 | Email notifications | 06 | [x] |
 | 08 | Search + application/transaction history | 06 | [ ] |
 | 09 | Management dashboard | 05, 06 | [ ] |
 | 10 | Audit trail hardening + OpenAPI polish | 02–09 | [ ] |
@@ -41,3 +41,6 @@ Follow-ups: choose the real card gateway (O-7) and mobile-money list (O-9); brow
 
 **Phase 06 (2026-10-14):** Department work queues with SLA risk (working days, paused during corrections and appointments), claim/claim-next/release/assign with optimistic versions and a claim-expiry job; masked review screen with audited unmask; corrections (max 3 rounds, 30-day deadline job with 7/1-day reminders, resubmit only when flagged items change), fingerprint/appearance appointments, approve, police referral (encrypted note), reject, supervisor second approval enforced by service and DB trigger; signed QR certificates (PDF on demand), supersede, paid duplicates (A6), supervisor revoke and chargeback resolution, public /verify/c with rate-limited name check; officer queue/review, citizen corrections and certificates UI; e2e staff fixture and desktop officer flow.
 Follow-ups: supervisor assign UI needs a staff picker; appointment/correction/decision emails ship with the Phase 07 outbox relay; legal wording per certificate (O-4); web entry bundle about 225 KB gz (208 KB index + 17 KB strings).
+
+**Phase 07 (2026-10-14):** Outbox relay (SKIP LOCKED, 5 s BullMQ schedule) turns FR-100 events into Notification rows, unique per event, channel and recipient, then delivers them on a BullMQ queue (exponential retries, then DEAD plus the `notifications-dead` queue; SENT rows never resend). English HTML + text templates carry only the first name, reference, portal link and appointment time/place. Codes and invitations are sent directly and logged without secrets (ADR-0008). SLA-breach job alerts department supervisors once. Opt-out of the three optional messages is audited. Web: in-app list with an unread badge, plus an email preference toggle.
+Follow-ups: choose the production SMTP provider; operator view/alert for dead-lettered emails (Phase 10/11); SMS adapter only if needed (port is channel-agnostic); web entry bundle about 182 KB gz.

@@ -1,6 +1,7 @@
 import { type Role } from '@govserve/shared';
 import { NavLink, Outlet, useNavigate } from 'react-router';
 import { useLogout } from '../api/auth';
+import { useUnreadCount } from '../api/notifications';
 import { useAuth } from '../auth/AuthProvider';
 import { t } from '../strings';
 
@@ -53,6 +54,7 @@ export function Layout() {
   const navigate = useNavigate();
   const role = auth.status === 'authenticated' ? auth.user.role : null;
   const isStaff = role !== null && role !== 'CITIZEN';
+  const unread = useUnreadCount(auth.status === 'authenticated').data?.unread ?? 0;
 
   return (
     <div className="flex min-h-dvh flex-col bg-white text-slate-900">
@@ -72,13 +74,34 @@ export function Layout() {
             </p>
           </div>
           {auth.status === 'authenticated' && (
-            <button
-              type="button"
-              onClick={() => logout.mutate(undefined, { onSettled: () => void navigate('/login') })}
-              className="shrink-0 rounded border border-white/60 px-3 py-1 text-sm hover:bg-white/10"
-            >
-              {t.nav.signOut}
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <NavLink
+                to="/account/notifications"
+                className="relative rounded border border-white/60 px-3 py-1 text-sm hover:bg-white/10"
+                data-testid="notifications-link"
+              >
+                <span aria-hidden="true">🔔</span>
+                <span className="sr-only">{t.nav.notifications}</span>
+                {unread > 0 && (
+                  <span
+                    className="ml-1 rounded-full bg-amber-400 px-1.5 text-xs font-bold text-slate-900"
+                    data-testid="unread-badge"
+                  >
+                    {unread > 99 ? '99+' : unread}
+                    <span className="sr-only"> ({t.nav.unread(unread)})</span>
+                  </span>
+                )}
+              </NavLink>
+              <button
+                type="button"
+                onClick={() =>
+                  logout.mutate(undefined, { onSettled: () => void navigate('/login') })
+                }
+                className="shrink-0 rounded border border-white/60 px-3 py-1 text-sm hover:bg-white/10"
+              >
+                {t.nav.signOut}
+              </button>
+            </div>
           )}
         </div>
         <nav aria-label={t.nav.main} className="mx-auto max-w-5xl overflow-x-auto px-2 pb-2">

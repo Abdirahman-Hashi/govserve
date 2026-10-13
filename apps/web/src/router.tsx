@@ -96,6 +96,14 @@ export const routes: RouteObject[] = [
               import('./routes/account/ProfilePage').then((m) => ({ Component: m.ProfilePage })),
             ),
           },
+          {
+            path: 'notifications',
+            ...page(() =>
+              import('./routes/account/NotificationsPage').then((m) => ({
+                Component: m.NotificationsPage,
+              })),
+            ),
+          },
         ],
       },
       {

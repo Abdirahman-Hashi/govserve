@@ -1,7 +1,6 @@
 import {
   ConflictException,
   ForbiddenException,
-  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -14,7 +13,7 @@ import { assertCitizenOwns } from '../common/guards/scope';
 import { type RequestContext } from '../common/request-context';
 import { CryptoService } from '../crypto/crypto.service';
 import { type CitizenProfile, Prisma } from '../generated/prisma/client';
-import { NOTIFICATION_PORT, type NotificationPort } from '../notifications/notification.port';
+import { DirectNotifier } from '../notifications/direct-notifier.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 type UserForProfile = UserWithDepartment & { citizenProfile: CitizenProfile | null };
@@ -28,7 +27,7 @@ export class UsersService {
     private readonly crypto: CryptoService,
     private readonly audit: AuditService,
     private readonly otp: OtpService,
-    @Inject(NOTIFICATION_PORT) private readonly notifier: NotificationPort,
+    private readonly notifier: DirectNotifier,
   ) {}
 
   async profile(caller: AuthUser, userId: string): Promise<Profile> {

@@ -14,6 +14,7 @@ import {
 import { FormAlert, SelectField, SubmitButton, TextField } from '../../components/form';
 import { useZodForm } from '../../forms/useZodForm';
 import { t } from '../../strings';
+import { NotificationPreferences } from './NotificationPreferences';
 
 /** Drops empty inputs so only fields the user filled in are sent. */
 const filled = (values: Record<string, string>) =>
@@ -167,6 +168,7 @@ export function ProfilePage() {
       <h1 className="text-2xl font-bold">{t.profile.heading}</h1>
       <ProfileForm profile={profile.data} />
       <EmailChange current={profile.data.email} />
+      <NotificationPreferences />
     </div>
   );
 }

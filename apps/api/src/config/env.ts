@@ -58,6 +58,10 @@ export const EnvSchema = z.object({
   SMTP_HOST: z.string().min(1),
   SMTP_PORT: z.coerce.number().int().min(1).max(65535),
   SMTP_FROM: z.string().min(3),
+  // Notification delivery (FR-102): attempts before dead-letter, first retry delay, outbox poll.
+  NOTIFY_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(5),
+  NOTIFY_BACKOFF_MS: z.coerce.number().int().min(10).default(30_000),
+  OUTBOX_POLL_MS: z.coerce.number().int().min(200).default(5_000),
   CLAMAV_HOST: z.string().min(1),
   CLAMAV_PORT: z.coerce.number().int().min(1).max(65535),
   // Public URL of the web app: links in emails and the Origin check on cookie endpoints.

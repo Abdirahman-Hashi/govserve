@@ -910,6 +910,55 @@ export class ReviewService {
     return { abandoned, reminders };
   }
 
+  /**
+   * FR-100: open work past its SLA (not paused) is reported once to the department's supervisors.
+   * The claim on `slaBreachedAt` makes concurrent runs harmless.
+   */
+  async detectSlaBreaches(now = new Date()): Promise<number> {
+    const overdue = await this.prisma.application.findMany({
+      where: {
+        status: { in: ['QUEUED', 'IN_REVIEW', 'AWAITING_SUPERVISOR'] },
+        slaPausedAt: null,
+        slaBreachedAt: null,
+        slaDueAt: { lt: now },
+      },
+      select: { id: true, departmentId: true, referenceNo: true, slaDueAt: true },
+      take: 500,
+    });
+    let count = 0;
+    for (const app of overdue) {
+      await this.prisma.$transaction(async (tx) => {
+        const claimed = await tx.application.updateMany({
+          where: { id: app.id, slaBreachedAt: null },
+          data: { slaBreachedAt: now },
+        });
+        if (claimed.count !== 1) return;
+        await this.audit.record(tx, {
+          actor: { id: null, role: null, type: 'SYSTEM' },
+          action: 'APPLICATION_SLA_BREACHED',
+          entityType: 'Application',
+          entityId: app.id,
+          departmentId: app.departmentId,
+          after: { referenceNo: app.referenceNo, slaDueAt: app.slaDueAt!.toISOString() },
+        });
+        await tx.outboxEvent.create({
+          data: {
+            type: 'SLA_BREACHED',
+            aggregateType: 'Application',
+            aggregateId: app.id,
+            payload: {
+              applicationId: app.id,
+              departmentId: app.departmentId,
+              referenceNo: app.referenceNo,
+            },
+          },
+        });
+        count += 1;
+      });
+    }
+    return count;
+  }
+
   /** FR-009: a deactivated officer's claims go back to the queue (A9 by the system). */
   async releaseClaimsOf(tx: Prisma.TransactionClient, userId: string): Promise<void> {
     const claimed = await tx.application.findMany({

@@ -105,6 +105,7 @@ enum {SELF, SELF_OR_CHILD}`.
 | correctionDueAt | timestamptz? | |
 | slaDueAt, slaPausedAt | timestamptz? | |
 | slaPausedTotalMs | bigint default 0 | |
+| slaBreachedAt | timestamptz? | set once when the SLA is first missed (one breach notice) |
 | reviewOutcome | enum {NO_RECORD, RECORD_FOUND}? | police only |
 | chargebackFlag | bool default false | |
 | submittedAt, queuedAt, decidedAt | timestamptz? | |
@@ -237,11 +238,15 @@ The private key is held in the secret store, not the DB.
 state change and relayed to BullMQ (ADR-0005). Index (dispatchedAt NULLS FIRST, createdAt).
 
 ### Notification
-`id, userId FK, eventId FK OutboxEvent, channel enum {EMAIL}, template, status enum {QUEUED, SENT, FAILED, DEAD}, attempts,
-providerMessageId?, readAt?, sentAt?`. unique(eventId, channel, userId) (idempotency).
+`id (uuid v7, time-ordered), userId FK, eventId FK OutboxEvent? (null for direct sends: codes and invitations), channel enum
+{EMAIL}, template, vars jsonb (non-PII only: referenceNo, applicationId, dueAt, daysLeft, appointmentAt, location), mandatory
+bool, status enum {QUEUED, SENT, FAILED, SKIPPED, DEAD}, attempts, providerMessageId?, lastError? (transport code only), readAt?,
+sentAt?, createdAt, updatedAt`. unique(eventId, channel, userId) (idempotency); index (userId, createdAt desc), (status,
+updatedAt). Check: SKIPPED only when not mandatory. See ADR-0008.
 
 ### NotificationPreference
-`userId PK/FK, emailOptional bool` (only non-mandatory messages).
+`userId PK/FK, emailOptional bool default true, updatedAt` (affects only the optional templates: submitted, payment
+received, withdrawn).
 
 ### AuditLog (append-only, hash-chained)
 | Field | Type | Notes |

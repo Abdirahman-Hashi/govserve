@@ -56,7 +56,10 @@ const notFound = { status: 404, description: 'NOT_FOUND' };
 @ApiBearerAuth()
 @Roles('OFFICER', 'SUPERVISOR')
 @ApiResponse({ status: 401, description: 'UNAUTHENTICATED' })
-@ApiResponse({ status: 403, description: 'FORBIDDEN (not staff, or another department’s application)' })
+@ApiResponse({
+  status: 403,
+  description: 'FORBIDDEN (not staff, or another department’s application)',
+})
 @Controller('review')
 export class ReviewController {
   constructor(private readonly review: ReviewService) {}

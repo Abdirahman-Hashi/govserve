@@ -79,3 +79,14 @@ Settled in the Phase 0 interview. Details are in docs/SPEC.md, docs/SERVICES.md 
 - **The police "record found" note is encrypted** (`ReviewDecision.noteEnc`). It never appears in audit details, the outbox or citizen views.
 - **The supervisor "assign" action is API-only for now.** The UI needs a staff picker for supervisors, which is a follow-up.
 
+## Phase 07 decisions (2026-10-14)
+- **Codes and invitation links are sent directly**, never through the outbox or Redis, because they are one-time secrets.
+  Each send is still logged, without the code (ADR-0008).
+- **Appointment emails include the date, time and place.** None of these is personal data, and they are the point of
+  the message. All other emails carry only the first name, the reference number and a portal link (FR-101).
+- **Only three messages can be opted out of:** application submitted, payment details received and withdrawn. Codes,
+  receipts, corrections, reminders, appointments, decisions, refunds and SLA alerts are always sent. In-app
+  notifications are kept regardless of the preference.
+- **SLA breach** is reported once per application (`slaBreachedAt`) to every active supervisor in the department. A job
+  checks every 15 minutes.
+

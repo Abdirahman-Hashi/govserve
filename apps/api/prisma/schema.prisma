@@ -80,15 +80,17 @@ model User {
   createdAt        DateTime   @default(now()) @db.Timestamptz(3)
   updatedAt        DateTime   @updatedAt @db.Timestamptz(3)
 
-  department      Department?       @relation(fields: [departmentId], references: [id])
-  citizenProfile  CitizenProfile?
-  refreshTokens   RefreshToken[]
-  otpCodes        OtpCode[]
-  trustedDevices  TrustedDevice[]
-  invitationsSent StaffInvitation[] @relation("InvitedBy")
-  applications    Application[]     @relation("Applicant")
-  assigned        Application[]     @relation("Assignee")
-  documents       Document[]
+  department             Department?             @relation(fields: [departmentId], references: [id])
+  citizenProfile         CitizenProfile?
+  refreshTokens          RefreshToken[]
+  otpCodes               OtpCode[]
+  trustedDevices         TrustedDevice[]
+  invitationsSent        StaffInvitation[]       @relation("InvitedBy")
+  applications           Application[]           @relation("Applicant")
+  assigned               Application[]           @relation("Assignee")
+  documents              Document[]
+  notifications          Notification[]
+  notificationPreference NotificationPreference?
 
   @@index([role, departmentId])
   @@index([phoneBidx])
@@ -401,6 +403,8 @@ model Application {
   slaDueAt            DateTime?         @db.Timestamptz(3)
   slaPausedAt         DateTime?         @db.Timestamptz(3)
   slaPausedTotalMs    BigInt            @default(0)
+  /// Set once when the SLA is first missed (one breach notice per application).
+  slaBreachedAt       DateTime?         @db.Timestamptz(3)
   reviewOutcome       ReviewOutcome?
   chargebackFlag      Boolean           @default(false)
   submittedAt         DateTime?         @db.Timestamptz(3)
@@ -552,8 +556,62 @@ model OutboxEvent {
   dispatchedAt  DateTime? @db.Timestamptz(3)
   attempts      Int       @default(0)
 
+  notifications Notification[]
+
   @@index([dispatchedAt, createdAt])
   @@map("outbox_event")
+}
+
+// ─── Notifications (DATA_MODEL §6, FR-100–FR-102) ────────────────────────────
+
+enum NotificationChannel {
+  EMAIL
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  FAILED
+  SKIPPED
+  DEAD
+}
+
+model Notification {
+  id                String              @id @default(uuid(7)) @db.Uuid
+  userId            String              @db.Uuid
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Null for direct sends (codes and invitations are never written to the outbox).
+  eventId           String?             @db.Uuid
+  event             OutboxEvent?        @relation(fields: [eventId], references: [id])
+  channel           NotificationChannel @default(EMAIL)
+  template          String
+  /// Non-PII variables only (reference number, link targets, appointment time and place).
+  vars              Json                @default("{}")
+  mandatory         Boolean             @default(true)
+  status            NotificationStatus  @default(QUEUED)
+  attempts          Int                 @default(0)
+  providerMessageId String?
+  /// Transport diagnostics only (codes), never addresses.
+  lastError         String?
+  readAt            DateTime?           @db.Timestamptz(3)
+  sentAt            DateTime?           @db.Timestamptz(3)
+  createdAt         DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime            @updatedAt @db.Timestamptz(3)
+
+  @@unique([eventId, channel, userId])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([status, updatedAt])
+  @@map("notification")
+}
+
+model NotificationPreference {
+  userId        String   @id @db.Uuid
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Optional updates (submitted, payment received, withdrawn). Mandatory messages ignore this.
+  emailOptional Boolean  @default(true)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
+
+  @@map("notification_preference")
 }
 
 // ─── Payments, refunds, receipts (DATA_MODEL §4, STATE_MACHINES §2–3) ───────

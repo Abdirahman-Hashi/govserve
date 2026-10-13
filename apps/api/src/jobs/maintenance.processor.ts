@@ -12,6 +12,7 @@ export const PURGE_JOB = 'purge-auth';
 export const RECONCILE_CARD_JOB = 'reconcile-card';
 export const ABANDON_UNPAID_JOB = 'abandon-unpaid';
 export const EXPIRE_CLAIMS_JOB = 'expire-claims';
+export const SLA_BREACH_JOB = 'sla-breach';
 export const CORRECTION_DEADLINES_JOB = 'correction-deadlines';
 
 /** Daily retention work (ADR-0005: BullMQ repeatable jobs). */
@@ -38,6 +39,10 @@ export class MaintenanceProcessor extends WorkerHost {
     }
     if (job.name === EXPIRE_CLAIMS_JOB) {
       await this.review.expireClaims();
+      return;
+    }
+    if (job.name === SLA_BREACH_JOB) {
+      await this.review.detectSlaBreaches();
       return;
     }
     if (job.name === CORRECTION_DEADLINES_JOB) {
@@ -72,6 +77,11 @@ export class MaintenanceScheduler implements OnApplicationBootstrap {
       EXPIRE_CLAIMS_JOB,
       { every: 15 * 60_000 },
       { name: EXPIRE_CLAIMS_JOB },
+    );
+    await this.queue.upsertJobScheduler(
+      SLA_BREACH_JOB,
+      { every: 15 * 60_000 },
+      { name: SLA_BREACH_JOB },
     );
     await this.queue.upsertJobScheduler(
       CORRECTION_DEADLINES_JOB,

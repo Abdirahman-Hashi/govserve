@@ -23,7 +23,7 @@ import { hashToken, TokenService } from '../auth/token.service';
 import { type RequestContext } from '../common/request-context';
 import { APP_CONFIG, type AppConfig } from '../config/config.module';
 import { type Prisma } from '../generated/prisma/client';
-import { NOTIFICATION_PORT, type NotificationPort } from '../notifications/notification.port';
+import { DirectNotifier } from '../notifications/direct-notifier.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 const STAFF_ROLES = ['OFFICER', 'SUPERVISOR', 'ADMIN'] as const;
@@ -42,7 +42,7 @@ export class StaffService {
     private readonly tokens: TokenService,
     private readonly revocation: SessionRevocationService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
-    @Inject(NOTIFICATION_PORT) private readonly notifier: NotificationPort,
+    private readonly notifier: DirectNotifier,
     private readonly review: ReviewService,
   ) {}
 

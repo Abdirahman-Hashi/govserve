@@ -2,7 +2,11 @@ import { Inject, Injectable, type OnModuleDestroy, Optional } from '@nestjs/comm
 import { createTransport, type Transporter } from 'nodemailer';
 import { APP_CONFIG, type AppConfig } from '../config/config.module';
 import { NotificationDeliveryError } from './notification-delivery.error';
-import { type NotificationMessage, type NotificationPort } from './notification.port';
+import {
+  type NotificationMessage,
+  type NotificationPort,
+  type SendResult,
+} from './notification.port';
 import { renderEmail } from './templates';
 
 /** Optional transport override (tests); production builds one from SMTP_* settings. */
@@ -26,10 +30,17 @@ export class SmtpEmailAdapter implements NotificationPort, OnModuleDestroy {
       });
   }
 
-  async send(message: NotificationMessage): Promise<void> {
-    const { subject, text } = renderEmail(message);
+  async send(message: NotificationMessage): Promise<SendResult> {
+    const { subject, text, html } = renderEmail(message);
     try {
-      await this.transport.sendMail({ from: this.config.SMTP_FROM, to: message.to, subject, text });
+      const info = (await this.transport.sendMail({
+        from: this.config.SMTP_FROM,
+        to: message.to,
+        subject,
+        text,
+        html,
+      })) as { messageId?: string } | undefined;
+      return info?.messageId ? { providerMessageId: info.messageId } : {};
     } catch (err) {
       // Never let the transport error escape: it can contain the recipient address.
       throw NotificationDeliveryError.from(message.template, err);

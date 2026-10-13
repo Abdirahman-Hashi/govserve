@@ -15,6 +15,7 @@ import { CryptoModule } from './crypto/crypto.module';
 import { DocumentsModule } from './documents/documents.module';
 import { HealthModule } from './health/health.module';
 import { JobsModule } from './jobs/jobs.module';
+import { NotificationJobsModule } from './notifications/notification-jobs.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PaymentsModule } from './payments/payments.module';
 import { ReviewModule } from './review/review.module';
@@ -52,6 +53,7 @@ import { StorageModule } from './storage/storage.module';
     CertificatesModule,
     ReviewModule,
     JobsModule,
+    NotificationJobsModule,
     HealthModule,
   ],
   providers: [

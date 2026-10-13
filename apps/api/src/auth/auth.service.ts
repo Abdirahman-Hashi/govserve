@@ -1,9 +1,9 @@
+import { DirectNotifier } from '../notifications/direct-notifier.service';
 import { randomBytes } from 'node:crypto';
 import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
-  Inject,
   Injectable,
   Logger,
   UnauthorizedException,
@@ -18,11 +18,7 @@ import {
 import { AuditService, PUBLIC_ACTOR, SYSTEM_ACTOR, type AuditActor } from '../audit/audit.service';
 import { type RequestContext } from '../common/request-context';
 import { CryptoService } from '../crypto/crypto.service';
-import {
-  NOTIFICATION_PORT,
-  type NotificationMessage,
-  type NotificationPort,
-} from '../notifications/notification.port';
+import { type NotificationMessage } from '../notifications/notification.port';
 import { NotificationDeliveryError } from '../notifications/notification-delivery.error';
 import { PrismaService } from '../prisma/prisma.service';
 import { AUTH_POLICY } from './auth.constants';
@@ -67,7 +63,7 @@ export class AuthService {
     private readonly revocation: SessionRevocationService,
     private readonly crypto: CryptoService,
     private readonly audit: AuditService,
-    @Inject(NOTIFICATION_PORT) private readonly notifier: NotificationPort,
+    private readonly notifier: DirectNotifier,
   ) {}
 
   // ─── Registration (FR-001, FR-002) ─────────────────────────────────────────
