@@ -1,0 +1,295 @@
+# GovServe data model
+
+Version 1.0 (Phase 0), 2026-10-13. PostgreSQL 16 via Prisma (ADR-0002). Requirements: docs/SPEC.md. Statuses: docs/STATE_MACHINES.md.
+
+Conventions:
+- Primary keys are `uuid` (v7, time-ordered). Human-facing numbers (reference, receipt, certificate) are separate unique columns.
+- Every table has `createdAt` and `updatedAt` (timestamptz, UTC). Mutable aggregates have a `version int` column for optimistic locking.
+- Money is `bigint` cents (`…Cents`), USD only, so there is no currency column. Prisma `BigInt`; JSON responses use strings.
+- **🔒** = encrypted at rest (AES-256-GCM via the crypto service, stored as `bytea` envelope `{keyId, iv, tag, ct}`).
+  **#** = blind index column `…Bidx` (HMAC-SHA-256 with a separate key) for equality search.
+- Enums are Postgres enums managed by Prisma.
+
+## 1. Identity and access
+### User
+| Field | Type | Notes |
+| --- | --- | --- |
+| id | uuid PK | |
+| email | citext unique | Required (DECISIONS) |
+| emailVerifiedAt | timestamptz? | |
+| passwordHash | text? | argon2id; null until invited staff sets it |
+| fullName | text | Not encrypted (shown on certificates, used in search) |
+| phone🔒 / phoneBidx# | bytea? / text? | |
+| role | enum Role {CITIZEN, OFFICER, SUPERVISOR, ADMIN} | Exactly one role per user |
+| departmentId | uuid? FK Department | Required for OFFICER/SUPERVISOR, null otherwise (check constraint) |
+| status | enum {ACTIVE, LOCKED, DEACTIVATED} | |
+| failedLoginCount, lockedUntil | int, timestamptz? | FR-004 |
+| lastLoginAt | timestamptz? | |
+Indexes: unique(email); (role, departmentId); phoneBidx.
+
+### CitizenProfile (1:1 User, citizens only)
+| Field | Type | Notes |
+| --- | --- | --- |
+| userId | uuid PK/FK | |
+| nationalIdType | enum {NATIONAL_ID, PASSPORT} | |
+| nationalId🔒 / nationalIdBidx# | bytea / text | unique(nationalIdBidx) where not null |
+| dateOfBirth🔒 | bytea | |
+
+### Department
+`id, code unique (ADDRESS, POLICE, CIVIL_REGISTRY), name, active`.
+
+### RefreshToken
+`id, userId FK, familyId uuid, tokenHash text unique (SHA-256), expiresAt, rotatedAt?, revokedAt?, revokedReason?, ip, userAgent`.
+Index (userId), (familyId). Reuse of a rotated token revokes every row in the family (ADR-0003).
+
+### OtpCode
+`id, userId FK?, email, purpose enum {VERIFY_EMAIL, RESET_PASSWORD, STAFF_DEVICE, CHANGE_EMAIL}, codeHash, expiresAt, attempts int, consumedAt?`.
+Index (email, purpose, consumedAt).
+
+### StaffInvitation
+`id, email, role, departmentId?, tokenHash unique, invitedById FK User, expiresAt, acceptedAt?`.
+
+### TrustedDevice
+`id, userId FK, deviceIdHash, lastSeenAt, expiresAt (30 d), revokedAt?`. unique(userId, deviceIdHash).
+
+## 2. Catalogue
+### Service
+`id, code unique (PROOF_OF_ADDRESS, POLICE_CLEARANCE, BIRTH_CERTIFICATE), name, description, departmentId FK,
+active bool, slaWorkingDays int, inPersonStep enum {NONE, FINGERPRINTS, APPEARANCE}, approvalMode enum {SINGLE,
+SUPERVISOR_SECOND, SUPERVISOR_ON_RECORD_FOUND}, validityMonths int?, certificatePrefix text (ADR, POL, BRT), subjectMode
+enum {SELF, SELF_OR_CHILD}`.
+
+### ServiceVersion (immutable once published)
+| Field | Type | Notes |
+| --- | --- | --- |
+| id | uuid PK | |
+| serviceId | FK Service | |
+| versionNo | int | unique(serviceId, versionNo) |
+| status | enum {DRAFT, PUBLISHED, RETIRED} | at most one PUBLISHED per service (partial unique index) |
+| formSchema, uiSchema | jsonb | JSON Schema; PII fields tagged `x-pii: true` so they route to encrypted columns |
+| requiredDocuments | jsonb | `[{type, label, mime[], maxBytes, required, oneOfGroup?}]` |
+| feeBaseCents, feePerCopyCents | bigint | ≥ 0 (check). The fee rule (FR-040) |
+| feeIsTest | bool | true until the owner confirms the official fee (O-1); flagged in the admin UI |
+| publishedAt, publishedById | timestamptz?, FK? | |
+
+### Setting
+`key text PK, value jsonb, updatedById, updatedAt`. Keys: `payment.supervisorThresholdCents` (10000),
+`correction.deadlineDays` (30), `correction.maxRounds` (3), `claim.expiryWorkingDays` (2), `payment.unpaidAbandonDays` (30),
+`retention.documentYears` (7), `retention.draftDays` (90), `appointment.maxReschedules` (2).
+
+### Holiday
+`date PK, name`. The working-week definition is held in a Setting.
+
+### ReasonCode
+`id, kind enum {REJECT, PAYMENT_REJECT, REVOKE, REFUND_DECLINE}, code, label, active`. unique(kind, code).
+
+## 3. Applications
+### Application
+| Field | Type | Notes |
+| --- | --- | --- |
+| id | uuid PK | |
+| referenceNo | text unique? | `GS-YYYY-NNNNNN`, set on submit from sequence `application_ref_seq` |
+| kind | enum {STANDARD, DUPLICATE} | |
+| applicantId | FK User | owner |
+| serviceId, serviceVersionId | FK | pinned at creation |
+| departmentId | FK Department | denormalised from Service for scope filters |
+| subjectType | enum {SELF, CHILD} | |
+| subjectKey | text | Normalised hash of the subject (applicant id for SELF; HMAC(name+DOB+mother) for CHILD). Used for FR-031 |
+| relationship | enum {SELF, MOTHER, FATHER, GUARDIAN} | |
+| extraCopies | int 0–5 | |
+| sourceCertificateId | FK Certificate? | DUPLICATE kind only |
+| status | enum ApplicationStatus | see STATE_MACHINES §1 |
+| assigneeId | FK User? | |
+| claimExpiresAt | timestamptz? | |
+| correctionRound | int default 0 | |
+| correctionDueAt | timestamptz? | |
+| slaDueAt, slaPausedAt | timestamptz? | |
+| slaPausedTotalMs | bigint default 0 | |
+| reviewOutcome | enum {NO_RECORD, RECORD_FOUND}? | police only |
+| chargebackFlag | bool default false | |
+| submittedAt, queuedAt, decidedAt | timestamptz? | |
+| version | int | optimistic lock |
+Indexes: **partial unique (applicantId, serviceId, subjectKey) WHERE kind='STANDARD' AND status IN (open states)**
+(FR-031); (departmentId, status, slaDueAt) for queues; (assigneeId, status); (applicantId, createdAt desc);
+trigram on referenceNo.
+
+### ApplicationData (1:1 Application)
+`applicationId PK/FK, data jsonb` (non-PII form fields), plus encrypted columns for the PII fields:
+`subjectNationalId🔒 / subjectNationalIdBidx#, subjectDob🔒, applicantPhone🔒, motherFullName🔒, fatherIdNo🔒, motherIdNo🔒,
+recordNote🔒` (police officer note when RECORD_FOUND). `subjectFullName text` stays plain for search and the certificate (with a GIN tsvector index).
+
+### ApplicationStatusHistory (append-only)
+`id, applicationId FK, fromStatus?, toStatus, actorId?, actorType enum {USER, SYSTEM}, note?, at`. Index (applicationId, at).
+
+### Document
+| Field | Type | Notes |
+| --- | --- | --- |
+| id | uuid PK | |
+| applicationId | FK? | null for payment evidence before linking |
+| paymentId | FK? | |
+| ownerId | FK User | |
+| docType | text | matches requiredDocuments.type |
+| storageKey | text unique | opaque key `docs/{uuid}`, never derived from the file name |
+| originalName, mime, sizeBytes, sha256 | text, text, int, text | MIME checked by magic bytes |
+| scanStatus | enum {QUARANTINED, CLEAN, INFECTED} | |
+| supersededById | FK Document? | replaced upload (corrections keep history) |
+| purgedAt | timestamptz? | retention (FR-151/152): object deleted, row kept |
+Index (applicationId, docType), (scanStatus, createdAt).
+
+### CorrectionRequest / CorrectionItem
+`CorrectionRequest: id, applicationId FK, round int, requestedById, dueAt, resolvedAt?` unique(applicationId, round).
+`CorrectionItem: id, correctionRequestId FK, kind enum {FIELD, DOCUMENT}, target text (JSON pointer or docType), comment, resolvedAt?`.
+
+### Appointment
+`id, applicationId FK, kind enum {FINGERPRINTS, APPEARANCE}, scheduledAt, location, status enum {SCHEDULED, ATTENDED,
+NO_SHOW, CANCELLED}, attendees jsonb? (names and roles, birth), recordedById?, recordedAt?, rescheduleCount int`.
+Index (applicationId), (status, scheduledAt).
+
+### ReviewDecision
+`id, applicationId FK, level enum {OFFICER, SUPERVISOR}, decision enum {APPROVE, FORWARD, RETURN, REJECT, REFER},
+outcome enum? (NO_RECORD/RECORD_FOUND), reasonCodeId?, note?, decidedById FK, decidedAt`. Check: the supervisor decision
+user ≠ the officer decision user (enforced in the service and a trigger).
+
+## 4. Fees and payments
+### FeeAssessment (immutable, 1:1 Application)
+`id, applicationId unique FK, lines jsonb [{code: BASE|COPY, qty, unitCents, amountCents}], totalCents bigint,
+ruleSnapshot jsonb (versionNo, base, perCopy, feeIsTest), assessedAt`.
+
+### Payment
+| Field | Type | Notes |
+| --- | --- | --- |
+| id | uuid PK | |
+| applicationId | FK | |
+| channel | enum {MOBILE_MONEY, BANK, CASH, CARD} | |
+| provider | text | e.g. EVC_PLUS, SAHAL, bank code, MOCK_CARD |
+| reference | text | transaction ID / slip no / receipt-book ref / gateway ref |
+| referenceNorm | text | upper-cased and trimmed |
+| amountCents | bigint > 0 | |
+| paidAt | timestamptz | as reported or recorded |
+| status | enum PaymentStatus | STATE_MACHINES §2 |
+| idempotencyKey | text? unique | card initiate |
+| payerName | text? | cash |
+| recordedById | FK User? | cash |
+| firstConfirmedById, confirmedById | FK User? | check: different users when both are set and the second confirmation was by a supervisor |
+| rejectReasonCodeId, rejectNote | FK?, text? | |
+| overpaidCents | bigint default 0 | |
+| version | int | |
+Indexes: **partial unique (channel, provider, referenceNorm) WHERE status <> 'REJECTED'** (FR-052); (applicationId);
+(status, createdAt) for the verification queue joined to Application.departmentId.
+
+### PaymentEvent (append-only)
+`id, paymentId FK, type, fromStatus?, toStatus?, actorId?, payload jsonb (no PII), providerEventId text? unique, at`.
+`providerEventId` unique provides webhook idempotency.
+
+### Refund
+`id, paymentId FK, reason enum {WITHDRAWN_BEFORE_REVIEW, DUPLICATE_PAYMENT, OVERPAYMENT, ABANDONED_UNPAID}, amountCents
+bigint, status enum {REQUESTED, APPROVED, DECLINED, COMPLETED, FAILED}, requestedById?, approvedById?, payoutMethod?,
+payoutReference?, providerRefundId? unique, note?, version`. Check: sum of non-DECLINED refunds ≤ payment amount (enforced in the service
+under a row lock).
+
+### Receipt
+`id, receiptNo unique (R-YYYY-NNNNNN), paymentId unique FK, applicationId FK, amountCents, issuedAt, payloadJson jsonb
+(canonical), signature bytea, keyId FK SigningKey, pdfStorageKey`. Status is derived from the payment and its refunds.
+
+### Counter (gap-free numbering)
+`name text PK (e.g. receipt:2026, cert:ADR:2026), nextValue bigint`. Incremented with `SELECT … FOR UPDATE` inside
+the issuing transaction.
+
+## 5. Certificates and signing
+### Certificate
+| Field | Type | Notes |
+| --- | --- | --- |
+| id | uuid PK | |
+| certificateNo | text unique | `{prefix}-YYYY-NNNNNN` |
+| applicationId | FK | |
+| serviceId | FK | |
+| holderUserId | FK User | applicant (owner) |
+| subjectKey | text | for supersede lookup |
+| holderName | text | full name, for name-match verification |
+| holderNameMasked | text | precomputed for the public page |
+| issuedAt | timestamptz | |
+| expiresAt | timestamptz? | null for birth |
+| status | enum {VALID, REVOKED} | EXPIRED derived |
+| revokedAt, revokedById, revokeReason enum {FRAUD, ERROR, CHARGEBACK, SUPERSEDED}, revokeNote | | |
+| duplicateOfId | FK Certificate? | |
+| supersededById | FK Certificate? | |
+| payloadJson, signature, keyId | jsonb, bytea, FK | ADR-0006 |
+| pdfStorageKey, pdfStatus enum {PENDING, READY, FAILED} | | rendered by job |
+Indexes: (serviceId, subjectKey, status); (holderUserId); unique(certificateNo).
+
+### SigningKey
+`id (keyId, text), algorithm 'Ed25519', publicKey bytea, status enum {ACTIVE, RETIRED}, activatedAt, retiredAt?`.
+The private key is held in the secret store, not the DB.
+
+## 6. Notifications, jobs, audit
+### OutboxEvent
+`id, type, aggregateType, aggregateId, payload jsonb, createdAt, dispatchedAt?, attempts`. Written in the same transaction as the
+state change and relayed to BullMQ (ADR-0005). Index (dispatchedAt NULLS FIRST, createdAt).
+
+### Notification
+`id, userId FK, eventId FK OutboxEvent, channel enum {EMAIL}, template, status enum {QUEUED, SENT, FAILED, DEAD}, attempts,
+providerMessageId?, readAt?, sentAt?`. unique(eventId, channel, userId) (idempotency).
+
+### NotificationPreference
+`userId PK/FK, emailOptional bool` (only non-mandatory messages).
+
+### AuditLog (append-only, hash-chained)
+| Field | Type | Notes |
+| --- | --- | --- |
+| id | bigint identity PK | ordering for the chain |
+| occurredAt | timestamptz | |
+| actorId, actorRole, actorType | uuid?, text?, enum {USER, SYSTEM, PUBLIC} | |
+| action | text | e.g. APPLICATION_SUBMITTED (STATE_MACHINES tables) |
+| entityType, entityId | text, text | |
+| departmentId | uuid? | scope for the supervisor viewer |
+| before, after | jsonb? | PII redacted |
+| ip, userAgent, requestId | text? | |
+| prevHash, hash | bytea | hash = SHA-256(prevHash ‖ canonical row) |
+Indexes: (entityType, entityId, occurredAt); (actorId, occurredAt); (departmentId, occurredAt); (action).
+The DB app role has INSERT and SELECT only.
+
+## 7. ER diagram (core)
+
+```mermaid
+erDiagram
+    Department ||--o{ User : "staff in"
+    Department ||--o{ Service : owns
+    User ||--o| CitizenProfile : has
+    User ||--o{ RefreshToken : has
+    User ||--o{ TrustedDevice : has
+    User ||--o{ Application : "applies (applicant)"
+    User ||--o{ Application : "assigned (assignee)"
+    Service ||--o{ ServiceVersion : versions
+    ServiceVersion ||--o{ Application : "pinned by"
+    Application ||--|| ApplicationData : has
+    Application ||--o{ ApplicationStatusHistory : history
+    Application ||--o{ Document : uploads
+    Application ||--o{ CorrectionRequest : rounds
+    CorrectionRequest ||--|{ CorrectionItem : flags
+    Application ||--o{ Appointment : schedules
+    Application ||--o{ ReviewDecision : decisions
+    Application ||--|| FeeAssessment : assessed
+    Application ||--o{ Payment : paid_by
+    Payment ||--o{ PaymentEvent : events
+    Payment ||--o{ Refund : refunds
+    Payment ||--o| Receipt : receipt
+    Payment ||--o| Document : evidence
+    Application ||--o| Certificate : issues
+    Certificate ||--o{ Certificate : "duplicates / supersedes"
+    Certificate }o--|| SigningKey : "signed with"
+    Receipt }o--|| SigningKey : "signed with"
+    User ||--o{ Notification : receives
+    OutboxEvent ||--o{ Notification : triggers
+    User ||--o{ AuditLog : acts
+```
+
+## 8. Retention mapping (FR-150–152)
+| Data | Retention | Mechanism |
+| --- | --- | --- |
+| Certificate, Receipt, Payment, Refund, AuditLog | Indefinite | — |
+| Document objects (decided applications) | 7 years after decidedAt (setting) | Nightly job deletes the object and sets purgedAt |
+| Drafts | 90 days idle → ABANDONED, uploads purged | Nightly job (A4) |
+| WITHDRAWN/ABANDONED uploads | 90 days | Nightly job |
+| Unverified citizen accounts | 7 days | Nightly job |
+| OtpCode, expired RefreshToken | 30 days after expiry | Nightly job |
+Legal sign-off: O-5.

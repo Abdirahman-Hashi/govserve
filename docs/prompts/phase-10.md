@@ -4,10 +4,14 @@ Implement Phase 10: make the audit trail tamper-evident and finish the API docs.
 
 Audit:
 - Review every module: list each state change, payment event and admin action and confirm it writes AuditLog in the same transaction. Produce a coverage table; fix gaps.
-- AuditLog fields: id, occurredAt, actorId, actorRole, action, entityType, entityId, before/after (PII redacted), ip, userAgent, requestId, prevHash, hash
+- AuditLog fields per @docs/DATA_MODEL.md §6: id, occurredAt, actorId, actorRole, actorType (USER/SYSTEM/PUBLIC), action, entityType, entityId, departmentId, before/after (PII redacted), ip, userAgent, requestId, prevHash, hash
 - Hash chain: hash = SHA-256(prevHash + canonical JSON of row); verification job reports the first broken link
 - Database: app role has INSERT/SELECT only on audit_log (no UPDATE/DELETE), enforced in a migration
-- Audit viewer (SUPERVISOR and ADMIN, read-only): filter by entity, actor, action, date; view the full history of one application; export
+- Audit viewer (SUPERVISOR for own department, ADMIN for all; read-only): filter by entity, actor, action, date; view the full history of one application; export
+
+Retention (FR-150–152, @docs/DATA_MODEL.md §8):
+- Nightly jobs: delete document objects 7 years after decision (keep row, set purgedAt); purge WITHDRAWN/ABANDONED uploads after 90 days; purge unverified accounts after 7 days; prune expired OTPs/refresh tokens and dispatched outbox rows after 30 days
+- Every purge writes an audit entry; certificates, receipts, payments and audit are never deleted
 
 API docs:
 - Every endpoint has summary, auth requirement, roles, request/response schemas with examples, error codes

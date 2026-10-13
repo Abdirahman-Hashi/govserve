@@ -43,3 +43,27 @@ Change a decision only by editing this file and noting the date and reason.
 ## Hosting
 - **Not decided.** Build portable: Docker Compose on a single Linux VM is the default target.
   Confirm the real target before Phase 11.
+
+## Phase 0 decisions (2026-10-13)
+Settled in the Phase 0 interview. Details are in docs/SPEC.md, docs/SERVICES.md and docs/STATE_MACHINES.md.
+- **Jurisdiction:** Somalia, Banadir Regional Administration (Mogadishu).
+- **Departments:** one per service (Address Office, Police/CID, Civil Registry). Officers and supervisors belong to exactly one department.
+- **Approval:** officer alone for proof of address and police "no record". A supervisor gives the second approval for every birth
+  certificate and confirms every police "record found" referral (no certificate is issued; the citizen visits CID).
+- **Supervisor payment threshold:** manual payments **> $100.00** (10000 cents), admin-configurable.
+- **Fees:** flat base fee + per-copy fee only. No waivers, penalties, express service or overrides. Official amounts are OPEN
+  (owner: Abdirahman Hashi). Seed values are marked TEST.
+- **Pay before review**, full amount required. Partial payments add up toward the total.
+- **Refunds** only for duplicate payments, overpayments, or a withdrawal before review starts (supervisor approves). No refund on rejection.
+- **Card chargeback:** the payment becomes REVERSED and the application is flagged. A supervisor decides; nothing is revoked automatically.
+- **Corrections:** only flagged items unlock; 30-day deadline, then ABANDONED; max 3 rounds.
+- **Birth certificate:** late registration only; parents always appear in person.
+- **Police clearance:** a fingerprint appointment is always required.
+- **Certificates:** paid duplicates get a new number; a corrected re-issue supersedes the old one; the public page shows a masked name plus
+  a name-match check.
+- **Retention:** certificates, payments and audit kept indefinitely; uploads 7 years; idle drafts 90 days.
+- **Work assignment:** officers pull from the department queue; claims expire after 2 working days.
+- **Staff auth:** admin invitation; password + email OTP per new device.
+- **One open application** per service and subject.
+- **Encrypted PII:** national ID, phone, DOB, mother's full name, parents' ID numbers.
+- **Bandwidth:** mobile-first, ≤250 KB initial JS, client-side image compression, autosave; no offline mode.

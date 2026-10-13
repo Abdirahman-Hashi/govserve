@@ -8,8 +8,8 @@ Implement Phase 11: deployable, cloud-ready delivery. Target: not decided yet (s
 - GitHub Actions:
   ci.yml: lint, typecheck, unit, integration, e2e (Playwright against compose), build, dependency audit, container scan (Trivy), SBOM
   deploy.yml: on main → build and push images tagged by commit SHA → deploy to staging → smoke tests; production via manual approval environment; rollback job to previous SHA
-- Backups: nightly Postgres dump to object storage with retention, and a documented restore drill script
+- Backups: nightly Postgres dump plus MinIO bucket and Redis (AOF) snapshots to object storage with retention, and a documented restore drill script (RPO 24 h, RTO 4 h per NFR-007)
 - Observability: structured logs, /metrics (Prometheus), basic alerts (5xx rate, payment webhook failures, queue backlog, audit-chain break)
-- docs/RUNBOOK.md: deploy, rollback, rotate keys, restore backup, incident checklist
+- docs/RUNBOOK.md: deploy, rollback, rotate keys (including Ed25519 signing-key rotation per ADR-0006: new ACTIVE key, old key stays published), restore backup, incident checklist
 
 Acceptance: a fresh clone can run `make up` (or equivalent) and reach a working staging-like stack; CI is green; you have shown me the deploy workflow graph.
