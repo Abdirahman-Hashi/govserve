@@ -12,8 +12,21 @@ import { t } from '../strings';
  * Fee preview using the shared fee function (FR-040). Display only: the API assesses the
  * real amount on submit, so nothing here is trusted by the server.
  */
-export function FeeEstimate({ fee, provisional }: { fee: FeeRuleJson; provisional: boolean }) {
-  const [copies, setCopies] = useState(0);
+export function FeeEstimate({
+  fee,
+  provisional,
+  copies: controlled,
+  onCopiesChange,
+}: {
+  fee: FeeRuleJson;
+  provisional: boolean;
+  /** Pass both to control the copies from outside (e.g. autosaved on an application). */
+  copies?: number;
+  onCopiesChange?: (copies: number) => void;
+}) {
+  const [own, setOwn] = useState(0);
+  const copies = controlled ?? own;
+  const setCopies = onCopiesChange ?? setOwn;
   const id = useId();
   const rule = { baseCents: parseCents(fee.baseCents), perCopyCents: parseCents(fee.perCopyCents) };
   const result = assessFee(rule, copies);

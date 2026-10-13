@@ -5,11 +5,13 @@ import { ErrorEnvelopeFilter } from './common/filters/error-envelope.filter';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { APP_CONFIG, type AppConfig, ConfigModule } from './config/config.module';
+import { ApplicationsModule } from './applications/applications.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { CatalogueModule } from './catalogue/catalogue.module';
 import { ConfigAdminModule } from './config-admin/config-admin.module';
 import { CryptoModule } from './crypto/crypto.module';
+import { DocumentsModule } from './documents/documents.module';
 import { HealthModule } from './health/health.module';
 import { JobsModule } from './jobs/jobs.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -17,6 +19,7 @@ import { UsersModule } from './users/users.module';
 import { LoggerModule } from './logging/logger.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
+import { StorageModule } from './storage/storage.module';
 
 @Module({
   imports: [
@@ -33,12 +36,15 @@ import { RedisModule } from './redis/redis.module';
     PrismaModule,
     RedisModule,
     CryptoModule,
+    StorageModule,
     AuditModule,
     NotificationsModule,
     AuthModule,
     UsersModule,
     CatalogueModule,
     ConfigAdminModule,
+    ApplicationsModule,
+    DocumentsModule,
     JobsModule,
     HealthModule,
   ],

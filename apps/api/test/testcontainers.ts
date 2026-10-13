@@ -3,23 +3,46 @@ import { randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { RedisContainer, type StartedRedisContainer } from '@testcontainers/redis';
+import { CreateBucketCommand, S3Client } from '@aws-sdk/client-s3';
+import { GenericContainer, type StartedTestContainer, Wait } from 'testcontainers';
 
 export interface TestInfra {
   databaseUrl: string;
   redisUrl: string;
+  s3Endpoint: string;
   postgres: StartedPostgreSqlContainer;
   redis: StartedRedisContainer;
+  objectstore: StartedTestContainer;
   stop(): Promise<void>;
 }
+
+const S3_KEY = 'testaccess';
+const S3_SECRET = 'testsecret123';
+export const TEST_BUCKET = 'test-documents';
 
 const API_ROOT = resolve(__dirname, '..');
 
 /** Starts throwaway Postgres 16 + Redis 7 and applies all Prisma migrations. */
 export async function startTestInfra(): Promise<TestInfra> {
-  const [postgres, redis] = await Promise.all([
+  const [postgres, redis, objectstore] = await Promise.all([
     new PostgreSqlContainer('postgres:16-alpine').start(),
     new RedisContainer('redis:7-alpine').start(),
+    new GenericContainer('rustfs/rustfs:1.0.1')
+      .withCommand(['server', '--address', ':9000', '/data'])
+      .withEnvironment({ RUSTFS_ACCESS_KEY: S3_KEY, RUSTFS_SECRET_KEY: S3_SECRET })
+      .withExposedPorts(9000)
+      .withWaitStrategy(Wait.forHttp('/health', 9000))
+      .start(),
   ]);
+  const s3Endpoint = `http://${objectstore.getHost()}:${objectstore.getMappedPort(9000)}`;
+  const s3 = new S3Client({
+    endpoint: s3Endpoint,
+    region: 'us-east-1',
+    forcePathStyle: true,
+    credentials: { accessKeyId: S3_KEY, secretAccessKey: S3_SECRET },
+  });
+  await s3.send(new CreateBucketCommand({ Bucket: TEST_BUCKET }));
+  s3.destroy();
   const databaseUrl = postgres.getConnectionUri();
   for (const args of [
     ['exec', 'prisma', 'migrate', 'deploy'],
@@ -34,30 +57,34 @@ export async function startTestInfra(): Promise<TestInfra> {
   return {
     databaseUrl,
     redisUrl: redis.getConnectionUrl(),
+    s3Endpoint,
     postgres,
     redis,
+    objectstore,
     stop: async () => {
-      await Promise.all([postgres.stop(), redis.stop()]);
+      await Promise.all([postgres.stop(), redis.stop(), objectstore.stop()]);
     },
   };
 }
 
 /** A complete, valid environment for booting AppModule in tests. */
 export function testEnv(
-  infra: Pick<TestInfra, 'databaseUrl' | 'redisUrl'>,
+  infra: Pick<TestInfra, 'databaseUrl' | 'redisUrl' | 's3Endpoint'>,
 ): Record<string, string> {
   return {
     NODE_ENV: 'test',
     LOG_LEVEL: 'silent',
+    VIRUS_SCANNER: 'noop',
     RATE_LIMIT_ENABLED: 'false',
     CORS_ORIGINS: 'http://localhost:5173',
     DATABASE_URL: infra.databaseUrl,
     REDIS_URL: infra.redisUrl,
-    S3_ENDPOINT: 'http://localhost:9000',
+    S3_ENDPOINT: infra.s3Endpoint,
     S3_REGION: 'us-east-1',
-    S3_BUCKET: 'test-bucket',
-    S3_ACCESS_KEY_ID: 'test',
-    S3_SECRET_ACCESS_KEY: 'test-secret',
+    S3_BUCKET: TEST_BUCKET,
+    S3_ACCESS_KEY_ID: S3_KEY,
+    S3_SECRET_ACCESS_KEY: S3_SECRET,
+    S3_FORCE_PATH_STYLE: 'true',
     SMTP_HOST: 'localhost',
     SMTP_PORT: '1025',
     SMTP_FROM: 'GovServe <no-reply@govserve.local>',

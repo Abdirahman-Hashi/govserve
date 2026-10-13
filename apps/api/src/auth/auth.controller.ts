@@ -50,6 +50,7 @@ import {
 
 /** Stricter limit for credential and code endpoints (NFR-001). */
 const AUTH_THROTTLE = { default: { limit: AUTH_POLICY.authRequestsPerMinute, ttl: 60_000 } };
+const SESSION_THROTTLE = { default: { limit: AUTH_POLICY.sessionRequestsPerMinute, ttl: 60_000 } };
 
 const examples = {
   register: {
@@ -171,6 +172,7 @@ export class AuthController {
   }
 
   @Post('refresh')
+  @Throttle(SESSION_THROTTLE)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Rotate the refresh cookie and get a new access token',
@@ -198,6 +200,7 @@ export class AuthController {
   }
 
   @Post('logout')
+  @Throttle(SESSION_THROTTLE)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Sign out this session',

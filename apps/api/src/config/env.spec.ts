@@ -53,6 +53,15 @@ describe('loadEnv', () => {
     ).toThrow(/PII_KEYS/);
   });
 
+  it('should refuse the no-op virus scanner in production', () => {
+    expect(() => loadEnv({ ...valid, NODE_ENV: 'production', VIRUS_SCANNER: 'noop' })).toThrow(
+      /VIRUS_SCANNER/,
+    );
+    expect(
+      loadEnv({ ...valid, NODE_ENV: 'development', VIRUS_SCANNER: 'noop' }).VIRUS_SCANNER,
+    ).toBe('noop');
+  });
+
   it('should reject a short JWT secret', () => {
     expect(() => loadEnv({ ...valid, JWT_ACCESS_SECRET: 'short' })).toThrow(/JWT_ACCESS_SECRET/);
   });

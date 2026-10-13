@@ -22,6 +22,7 @@ import { type AuthUser } from '../auth/auth.types';
 import { type RequestContext } from '../common/request-context';
 import { Prisma, type ServiceVersion } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { SUBJECT_FIELDS } from '../applications/form-data';
 import { published, toAdminService, toDetail, toSummary, toVersionDto } from './catalogue.mapper';
 
 const withRelations = { department: true, versions: { orderBy: { versionNo: 'desc' } } } as const;
@@ -324,7 +325,8 @@ export class CatalogueService {
     const version = await this.prisma.$transaction(async (tx) => {
       const draft = await this.versionOr404(tx, id);
       if (draft.status !== 'DRAFT') throw notEditable();
-      const problems = validateForPublish(draft);
+      const service = await tx.service.findUniqueOrThrow({ where: { id: draft.serviceId } });
+      const problems = validateForPublish(draft, service.subjectMode);
       if (problems.length > 0) {
         throw new UnprocessableEntityException({
           code: 'VERSION_INVALID',
@@ -412,10 +414,22 @@ export function validateForPublish(
     ServiceVersion,
     'formSchema' | 'uiSchema' | 'requiredDocuments' | 'feeBaseCents' | 'feePerCopyCents'
   >,
+  subjectMode: 'SELF' | 'SELF_OR_CHILD' = 'SELF',
 ): string[] {
   const problems: string[] = [];
   const form = checkFormDefinition(v.formSchema, v.uiSchema);
   if (!form.ok) problems.push(...form.problems);
+  // "Self or a child" services identify the subject from these fields (FR-031, FR-032).
+  if (form.ok && subjectMode === 'SELF_OR_CHILD') {
+    for (const name of SUBJECT_FIELDS) {
+      if (!(name in form.schema.properties))
+        problems.push(`Services for a child must have a "${name}" field`);
+    }
+    const rel = form.schema.properties['relationship'];
+    if (rel && (rel.type !== 'string' || !rel.enum?.includes('SELF'))) {
+      problems.push('The "relationship" field must be an options field that includes SELF');
+    }
+  }
   const docs = RequiredDocumentsSchema.safeParse(v.requiredDocuments);
   if (!docs.success)
     problems.push(

@@ -8,7 +8,7 @@ Tick a phase only when lint, typecheck and tests are green and the phase's accep
 | 01 | Monorepo scaffold, Docker Compose, CI skeleton | 00 | [x] |
 | 02 | Auth, JWT, RBAC, users | 01 | [x] |
 | 03 | Service catalogue + configurable forms + fee engine | 02 | [x] |
-| 04 | Applications + document uploads | 03 | [ ] |
+| 04 | Applications + document uploads | 03 | [x] |
 | 05 | Fee assessment, payments, verifiable receipts | 04 | [ ] |
 | 06 | Officer work queues + review workflow | 04, 05 | [ ] |
 | 07 | Email notifications | 06 | [ ] |
@@ -32,3 +32,6 @@ Follow-ups: release claims on deactivation (Phase 06); audit hash chain and inse
 
 **Phase 03 (2026-10-13):** Service catalogue with immutable versioned forms (JSON Schema subset validated by the same `validateFormData` in browser and API, no runtime codegen), required documents with any-one-of groups, base + per-copy fee rule, publish/retire with one live version per service; settings, holidays and reason codes; idempotent seed of the three pilot services (TEST fees) plus defaults; public catalogue with fee estimate and form preview; admin version editor with live preview.
 Follow-ups: official fees/validity/SLAs still O-1–O-3 (seed is TEST); district list and ID format unconfirmed (free text / generic pattern); main web bundle 204 KB gz, so add per-module subpath exports in packages/shared to keep the form validator out of the entry chunk; seed does not audit default settings/reason codes (system setup).
+
+**Phase 04 (2026-10-13):** Applications with the full A1–A22 transition table in ApplicationStateService (history + AuditLog + outbox per transition, optimistic locking, 409 for every disallowed move), drafts with autosave, submit (form + document checks, GS reference, immutable FeeAssessment), withdraw, delete, idle-draft purge; correction field locking; one open application per subject; private uploads via pre-signed PUT with size/content-type/SHA-256 verification, quarantine and virus-scan port (ClamAV/noop), every document change audited; citizen wizard, checklist, status page; session refresh rate limit raised to 60/min (shared carrier NAT).
+Follow-ups: verify the ClamAV adapter against a real clamd (`--profile scan`) before Phase 11; refunds on withdrawal (Phase 05) and resubmission A12 (Phase 06); outbox relay in Phase 07; web entry bundle 205.6 KB gz.

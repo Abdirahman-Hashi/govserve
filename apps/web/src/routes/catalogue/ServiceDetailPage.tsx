@@ -1,6 +1,8 @@
 import { type FormValues, type RequiredDocument, validateFormData } from '@govserve/shared';
 import { useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
+import { useCreateApplication } from '../../api/applications';
+import { ApiError } from '../../api/client';
 import { useCatalogueService } from '../../api/catalogue';
 import { useAuth } from '../../auth/AuthProvider';
 import { DynamicForm } from '../../components/DynamicForm';
@@ -48,6 +50,38 @@ function DocumentList({ docs }: { docs: RequiredDocument[] }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+function ApplyButton({ code }: { code: string }) {
+  const create = useCreateApplication();
+  const navigate = useNavigate();
+  const [error, setError] = useState<string | null>(null);
+  const apply = () =>
+    create.mutate(code, {
+      onSuccess: (app) => void navigate(`/citizen/applications/${app.id}`),
+      onError: (err) => {
+        // An open application already exists: take the citizen to it.
+        const existing =
+          err instanceof ApiError && err.code === 'OPEN_APPLICATION_EXISTS'
+            ? (err.details as { applicationId?: string } | undefined)?.applicationId
+            : undefined;
+        if (existing) void navigate(`/citizen/applications/${existing}`);
+        else setError(err instanceof ApiError ? err.message : t.errors.generic);
+      },
+    });
+  return (
+    <div className="space-y-2">
+      {error && <FormAlert>{error}</FormAlert>}
+      <button
+        type="button"
+        onClick={apply}
+        disabled={create.isPending}
+        className="rounded-md bg-brand px-5 py-3 font-semibold text-white"
+      >
+        {t.applications.apply}
+      </button>
+    </div>
   );
 }
 
@@ -127,14 +161,20 @@ export function ServiceDetailPage() {
           {t.catalogue.checkAnswers}
         </button>
         {checked && <FormAlert tone="success">{t.catalogue.answersOk}</FormAlert>}
-        <p className="text-sm text-slate-700">
-          {t.catalogue.applySoon}{' '}
-          {auth.status === 'anonymous' && (
-            <Link to="/register" className="text-brand underline">
-              {t.catalogue.signInToApply}
-            </Link>
-          )}
-        </p>
+        {auth.status === 'authenticated' && auth.user.role === 'CITIZEN' ? (
+          <ApplyButton code={s.code} />
+        ) : (
+          <p className="text-sm text-slate-700">
+            {auth.status === 'anonymous' && (
+              <Link
+                to={`/login?next=${encodeURIComponent(`/services/${s.code}`)}`}
+                className="text-brand underline"
+              >
+                {t.catalogue.signInToApply}
+              </Link>
+            )}
+          </p>
+        )}
       </section>
     </div>
   );

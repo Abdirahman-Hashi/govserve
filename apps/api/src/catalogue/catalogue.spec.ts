@@ -8,7 +8,7 @@ describe('pilot services (docs/SERVICES.md)', () => {
   it.each(PILOT_SERVICES.map((s) => [s.code, s] as const))(
     'should pass the publish gate for %s',
     (_code, svc) => {
-      expect(validateForPublish(svc)).toEqual([]);
+      expect(validateForPublish(svc, svc.subjectMode)).toEqual([]);
     },
   );
 
@@ -90,6 +90,13 @@ describe('pilot services (docs/SERVICES.md)', () => {
 
 describe('validateForPublish', () => {
   const ok = byCode['PROOF_OF_ADDRESS']!;
+
+  it('should require the subject fields for services that can be for a child', () => {
+    const problems = validateForPublish(ok, 'SELF_OR_CHILD');
+    expect(problems).toEqual(
+      expect.arrayContaining(['Services for a child must have a "relationship" field']),
+    );
+  });
 
   it('should reject a negative fee', () => {
     expect(validateForPublish({ ...ok, feeBaseCents: -1n })).toContain('Fees must not be negative');

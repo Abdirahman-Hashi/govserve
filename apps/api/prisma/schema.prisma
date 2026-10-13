@@ -53,9 +53,10 @@ model Department {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
-  users       User[]
-  invitations StaffInvitation[]
-  services    Service[]
+  users        User[]
+  invitations  StaffInvitation[]
+  services     Service[]
+  applications Application[]
 
   @@map("department")
 }
@@ -85,6 +86,9 @@ model User {
   otpCodes        OtpCode[]
   trustedDevices  TrustedDevice[]
   invitationsSent StaffInvitation[] @relation("InvitedBy")
+  applications    Application[]     @relation("Applicant")
+  assigned        Application[]     @relation("Assignee")
+  documents       Document[]
 
   @@index([role, departmentId])
   @@index([phoneBidx])
@@ -257,8 +261,9 @@ model Service {
   createdAt         DateTime     @default(now()) @db.Timestamptz(3)
   updatedAt         DateTime     @updatedAt @db.Timestamptz(3)
 
-  department Department       @relation(fields: [departmentId], references: [id])
-  versions   ServiceVersion[]
+  department   Department       @relation(fields: [departmentId], references: [id])
+  versions     ServiceVersion[]
+  applications Application[]
 
   @@map("service")
 }
@@ -282,7 +287,8 @@ model ServiceVersion {
   createdAt         DateTime      @default(now()) @db.Timestamptz(3)
   updatedAt         DateTime      @updatedAt @db.Timestamptz(3)
 
-  service Service @relation(fields: [serviceId], references: [id])
+  service      Service       @relation(fields: [serviceId], references: [id])
+  applications Application[]
 
   @@unique([serviceId, versionNo])
   @@index([serviceId, status])
@@ -317,4 +323,226 @@ model ReasonCode {
 
   @@unique([kind, code])
   @@map("reason_code")
+}
+
+// ─── Applications (DATA_MODEL §3, STATE_MACHINES §1) ────────────────────────
+
+enum ApplicationStatus {
+  DRAFT
+  AWAITING_PAYMENT
+  QUEUED
+  IN_REVIEW
+  CORRECTION_REQUESTED
+  AWAITING_APPOINTMENT
+  AWAITING_SUPERVISOR
+  ISSUED
+  REJECTED
+  REFERRED
+  WITHDRAWN
+  ABANDONED
+}
+
+enum ApplicationKind {
+  STANDARD
+  DUPLICATE
+}
+
+enum SubjectType {
+  SELF
+  CHILD
+}
+
+enum Relationship {
+  SELF
+  MOTHER
+  FATHER
+  GUARDIAN
+}
+
+enum ReviewOutcome {
+  NO_RECORD
+  RECORD_FOUND
+}
+
+enum DocumentStatus {
+  PENDING_UPLOAD
+  QUARANTINED
+  CLEAN
+  INFECTED
+  REJECTED
+}
+
+enum CorrectionItemKind {
+  FIELD
+  DOCUMENT
+}
+
+/// Status changes only through ApplicationStateService (backend rules).
+model Application {
+  id                  String            @id @default(uuid(7)) @db.Uuid
+  referenceNo         String?           @unique
+  kind                ApplicationKind   @default(STANDARD)
+  applicantId         String            @db.Uuid
+  serviceId           String            @db.Uuid
+  serviceVersionId    String            @db.Uuid
+  departmentId        String            @db.Uuid
+  subjectType         SubjectType?
+  /// SELF: the applicant's id; CHILD: keyed hash of name + DOB + mother's name (set on submit).
+  subjectKey          String?
+  relationship        Relationship?
+  extraCopies         Int               @default(0)
+  sourceCertificateId String?           @db.Uuid
+  status              ApplicationStatus @default(DRAFT)
+  assigneeId          String?           @db.Uuid
+  claimExpiresAt      DateTime?         @db.Timestamptz(3)
+  correctionRound     Int               @default(0)
+  correctionDueAt     DateTime?         @db.Timestamptz(3)
+  slaDueAt            DateTime?         @db.Timestamptz(3)
+  slaPausedAt         DateTime?         @db.Timestamptz(3)
+  slaPausedTotalMs    BigInt            @default(0)
+  reviewOutcome       ReviewOutcome?
+  chargebackFlag      Boolean           @default(false)
+  submittedAt         DateTime?         @db.Timestamptz(3)
+  queuedAt            DateTime?         @db.Timestamptz(3)
+  decidedAt           DateTime?         @db.Timestamptz(3)
+  version             Int               @default(0)
+  createdAt           DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime          @updatedAt @db.Timestamptz(3)
+
+  applicant      User                       @relation("Applicant", fields: [applicantId], references: [id])
+  assignee       User?                      @relation("Assignee", fields: [assigneeId], references: [id])
+  service        Service                    @relation(fields: [serviceId], references: [id])
+  serviceVersion ServiceVersion             @relation(fields: [serviceVersionId], references: [id])
+  department     Department                 @relation(fields: [departmentId], references: [id])
+  data           ApplicationData?
+  history        ApplicationStatusHistory[]
+  documents      Document[]
+  corrections    CorrectionRequest[]
+  feeAssessment  FeeAssessment?
+
+  // Partial unique index for FR-031 is in the migration SQL.
+  @@index([departmentId, status, slaDueAt])
+  @@index([assigneeId, status])
+  @@index([applicantId, createdAt(sort: Desc)])
+  @@index([status, updatedAt])
+  @@map("application")
+}
+
+/// Form answers. Non-PII values in `data`; fields marked x-pii are one encrypted JSON blob (NFR-002).
+model ApplicationData {
+  applicationId         String   @id @db.Uuid
+  data                  Json     @default("{}")
+  piiEnc                Bytes?
+  subjectFullName       String?
+  subjectNationalIdBidx String?
+  updatedAt             DateTime @updatedAt @db.Timestamptz(3)
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([subjectNationalIdBidx])
+  @@map("application_data")
+}
+
+/// Append-only.
+model ApplicationStatusHistory {
+  id            String             @id @default(uuid(7)) @db.Uuid
+  applicationId String             @db.Uuid
+  fromStatus    ApplicationStatus?
+  toStatus      ApplicationStatus
+  actorId       String?            @db.Uuid
+  actorType     ActorType
+  note          String?
+  at            DateTime           @default(now()) @db.Timestamptz(3)
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId, at])
+  @@map("application_status_history")
+}
+
+model Document {
+  id             String         @id @default(uuid(7)) @db.Uuid
+  applicationId  String?        @db.Uuid
+  paymentId      String?        @db.Uuid
+  ownerId        String         @db.Uuid
+  docType        String
+  storageKey     String         @unique
+  originalName   String
+  mime           String
+  sizeBytes      Int
+  sha256         String
+  status         DocumentStatus @default(PENDING_UPLOAD)
+  statusReason   String?
+  supersededById String?        @db.Uuid
+  uploadedAt     DateTime?      @db.Timestamptz(3)
+  scannedAt      DateTime?      @db.Timestamptz(3)
+  purgedAt       DateTime?      @db.Timestamptz(3)
+  createdAt      DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime       @updatedAt @db.Timestamptz(3)
+
+  application Application? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  owner       User         @relation(fields: [ownerId], references: [id])
+
+  @@index([applicationId, docType])
+  @@index([status, createdAt])
+  @@map("document")
+}
+
+model CorrectionRequest {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  applicationId String    @db.Uuid
+  round         Int
+  requestedById String    @db.Uuid
+  dueAt         DateTime  @db.Timestamptz(3)
+  resolvedAt    DateTime? @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+
+  application Application      @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  items       CorrectionItem[]
+
+  @@unique([applicationId, round])
+  @@map("correction_request")
+}
+
+model CorrectionItem {
+  id                  String             @id @default(uuid(7)) @db.Uuid
+  correctionRequestId String             @db.Uuid
+  kind                CorrectionItemKind
+  /// Field name (FIELD) or document type (DOCUMENT).
+  target              String
+  comment             String
+  resolvedAt          DateTime?          @db.Timestamptz(3)
+
+  request CorrectionRequest @relation(fields: [correctionRequestId], references: [id], onDelete: Cascade)
+
+  @@map("correction_item")
+}
+
+/// Immutable once created (FR-040).
+model FeeAssessment {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  applicationId String   @unique @db.Uuid
+  lines         Json
+  totalCents    BigInt
+  ruleSnapshot  Json
+  assessedAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@map("fee_assessment")
+}
+
+/// Written in the same transaction as the change it announces; relayed to BullMQ (ADR-0005).
+model OutboxEvent {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  type          String
+  aggregateType String
+  aggregateId   String
+  payload       Json
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  dispatchedAt  DateTime? @db.Timestamptz(3)
+  attempts      Int       @default(0)
+
+  @@index([dispatchedAt, createdAt])
+  @@map("outbox_event")
 }

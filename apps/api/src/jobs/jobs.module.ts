@@ -1,6 +1,8 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
+import { ApplicationsModule } from '../applications/applications.module';
 import { APP_CONFIG, type AppConfig } from '../config/config.module';
+import { ConfigAdminModule } from '../config-admin/config-admin.module';
 import {
   MAINTENANCE_QUEUE,
   MaintenanceProcessor,
@@ -20,6 +22,8 @@ import { PurgeService } from './purge.service';
       }),
     }),
     BullModule.registerQueue({ name: MAINTENANCE_QUEUE }),
+    ApplicationsModule,
+    ConfigAdminModule,
   ],
   providers: [PurgeService, MaintenanceProcessor, MaintenanceScheduler],
   exports: [PurgeService],

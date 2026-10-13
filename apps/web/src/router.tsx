@@ -112,6 +112,14 @@ export const routes: RouteObject[] = [
               import('./routes/citizen/CitizenHome').then((m) => ({ Component: m.CitizenHome })),
             ),
           },
+          {
+            path: 'applications/:id',
+            ...page(() =>
+              import('./routes/citizen/ApplicationPage').then((m) => ({
+                Component: m.ApplicationPage,
+              })),
+            ),
+          },
         ],
       },
       {

@@ -53,10 +53,13 @@ services:
       AWS_SECRET_ACCESS_KEY: govserve_dev_secret
       AWS_DEFAULT_REGION: us-east-1
     entrypoint: ['/bin/sh', '-c']
+    # Browsers upload with pre-signed PUTs straight to the store, so the bucket allows the web origin (CORS).
     command:
       - >
-        aws --endpoint-url http://objectstore:9000 s3api head-bucket --bucket govserve-documents 2>/dev/null ||
-        aws --endpoint-url http://objectstore:9000 s3api create-bucket --bucket govserve-documents
+        (aws --endpoint-url http://objectstore:9000 s3api head-bucket --bucket govserve-documents 2>/dev/null ||
+        aws --endpoint-url http://objectstore:9000 s3api create-bucket --bucket govserve-documents) &&
+        aws --endpoint-url http://objectstore:9000 s3api put-bucket-cors --bucket govserve-documents
+        --cors-configuration '{"CORSRules":[{"AllowedOrigins":["http://localhost:5173"],"AllowedMethods":["PUT","GET"],"AllowedHeaders":["*"],"ExposeHeaders":["ETag"],"MaxAgeSeconds":3000}]}'
     restart: 'no'
 
   mailpit:

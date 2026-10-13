@@ -11,6 +11,11 @@ export const AUTH_POLICY = {
   unverifiedAccountTtlDays: 7,
   /** Per-IP limit on credential and code endpoints (NFR-001). */
   authRequestsPerMinute: 10,
+  /**
+   * Refresh/logout are authenticated by an unguessable cookie, not a guessable secret, and run
+   * on every page load; many citizens share one IP behind mobile carrier NAT. A looser limit.
+   */
+  sessionRequestsPerMinute: 60,
 } as const;
 
 export const REFRESH_COOKIE = 'gs_refresh';

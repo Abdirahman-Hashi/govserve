@@ -11,6 +11,7 @@ import {
   type ReasonCode,
   type Setting,
   SETTING_KEYS,
+  SETTING_DEFAULTS,
   type SettingKey,
   SettingSchemas,
   type UpdateReasonCodeRequest,
@@ -42,6 +43,13 @@ export class ConfigAdminService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
   ) {}
+
+  /** Typed value of a setting, falling back to the documented default. */
+  async get<K extends SettingKey>(key: K): Promise<(typeof SETTING_DEFAULTS)[K]> {
+    const row = await this.prisma.setting.findUnique({ where: { key } });
+    const parsed = row ? SettingSchemas[key].safeParse(row.value) : null;
+    return (parsed?.success ? parsed.data : SETTING_DEFAULTS[key]) as (typeof SETTING_DEFAULTS)[K];
+  }
 
   async listSettings(): Promise<Setting[]> {
     const rows = await this.prisma.setting.findMany();

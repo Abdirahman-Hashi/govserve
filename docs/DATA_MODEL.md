@@ -114,9 +114,10 @@ Indexes: **partial unique (applicantId, serviceId, subjectKey) WHERE kind='STAND
 trigram on referenceNo.
 
 ### ApplicationData (1:1 Application)
-`applicationId PK/FK, data jsonb` (non-PII form fields), plus encrypted columns for the PII fields:
-`subjectNationalId🔒 / subjectNationalIdBidx#, subjectDob🔒, applicantPhone🔒, motherFullName🔒, fatherIdNo🔒, motherIdNo🔒,
-recordNote🔒` (police officer note when RECORD_FOUND). `subjectFullName text` stays plain for search and the certificate (with a GIN tsvector index).
+`applicationId PK/FK, data jsonb` (answers to fields not marked `x-pii`), `piiEnc🔒 bytea?` (all `x-pii` answers as one
+encrypted JSON object; field sets vary by service, so per-field columns do not fit configurable forms),
+`subjectFullName text?` (from `subjectFullName`/`fullName`, plain for search), `subjectNationalIdBidx#` (from `idNumber`).
+Police "record found" notes are stored encrypted with the review decision (Phase 06). Changed 2026-10-13 (Phase 04).
 
 ### ApplicationStatusHistory (append-only)
 `id, applicationId FK, fromStatus?, toStatus, actorId?, actorType enum {USER, SYSTEM}, note?, at`. Index (applicationId, at).
@@ -131,7 +132,8 @@ recordNote🔒` (police officer note when RECORD_FOUND). `subjectFullName text` 
 | docType | text | matches requiredDocuments.type |
 | storageKey | text unique | opaque key `docs/{uuid}`, never derived from the file name |
 | originalName, mime, sizeBytes, sha256 | text, text, int, text | MIME checked by magic bytes |
-| scanStatus | enum {QUARANTINED, CLEAN, INFECTED} | |
+| status | enum {PENDING_UPLOAD, QUARANTINED, CLEAN, INFECTED, REJECTED} | PENDING_UPLOAD until the client confirms; REJECTED when size, type (by content) or SHA-256 do not match |
+| statusReason | text? | shown to the citizen |
 | supersededById | FK Document? | replaced upload (corrections keep history) |
 | purgedAt | timestamptz? | retention (FR-151/152): object deleted, row kept |
 Index (applicationId, docType), (scanStatus, createdAt).

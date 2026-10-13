@@ -28,6 +28,10 @@ export const EnvSchema = z.object({
   S3_ACCESS_KEY_ID: z.string().min(1),
   S3_SECRET_ACCESS_KEY: z.string().min(1),
   S3_FORCE_PATH_STYLE: booleanString.default(false),
+  // Host browsers use for pre-signed URLs when it differs from the API's internal endpoint.
+  S3_PUBLIC_ENDPOINT: z.url().optional(),
+  // clamav in every real environment; noop only for local development and tests.
+  VIRUS_SCANNER: z.enum(['clamav', 'noop']).default('clamav'),
   SMTP_HOST: z.string().min(1),
   SMTP_PORT: z.coerce.number().int().min(1).max(65535),
   SMTP_FROM: z.string().min(3),
@@ -62,6 +66,15 @@ export const EnvSchema = z.object({
 
 export type Env = z.infer<typeof EnvSchema>;
 
+/** Rules that span several variables. */
+function crossCheck(env: Env): string[] {
+  const problems: string[] = [];
+  if (env.NODE_ENV === 'production' && env.VIRUS_SCANNER !== 'clamav') {
+    problems.push('  - VIRUS_SCANNER: must be "clamav" in production');
+  }
+  return problems;
+}
+
 /**
  * Validates the environment and fails fast. The error names the offending
  * variables but never echoes their values (they may be secrets).
@@ -74,5 +87,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
       .join('\n');
     throw new Error(`Invalid environment configuration:\n${problems}`);
   }
+  const cross = crossCheck(result.data);
+  if (cross.length > 0) throw new Error(`Invalid environment configuration:\n${cross.join('\n')}`);
   return result.data;
 }
