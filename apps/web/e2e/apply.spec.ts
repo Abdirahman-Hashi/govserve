@@ -40,7 +40,8 @@ test('should complete a police clearance application end to end on a slow phone 
 
   await page.goto('/services/POLICE_CLEARANCE');
   await page.getByRole('button', { name: 'Apply now' }).click();
-  await expect(page).toHaveURL(/\/citizen\/applications\/[0-9a-f-]+$/);
+  // On slow 3G the application page's code loads before the URL changes.
+  await expect(page).toHaveURL(/\/citizen\/applications\/[0-9a-f-]+$/, { timeout: 30_000 });
 
   // Step 1: answers (autosaved).
   await page.getByLabel(/^Full name/).fill('Amina Hassan');

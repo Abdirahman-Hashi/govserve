@@ -15,6 +15,8 @@ import {
   DocumentSchema,
   type DownloadTicket,
   DownloadTicketSchema,
+  type RequestEvidenceUploadRequest,
+  RequestEvidenceUploadRequestSchema,
   type RequestUploadRequest,
   RequestUploadRequestSchema,
   type UploadTicket,
@@ -108,5 +110,52 @@ export class DocumentsController {
     @Param('id', uuid) id: string,
   ): Promise<void> {
     await this.documents.remove(user, id);
+  }
+
+  @Post('applications/:id/payment-evidence')
+  @ApiOperation({
+    summary: 'Request an upload URL for payment evidence',
+    description:
+      'Roles: CITIZEN (own only). A screenshot or deposit-slip photo while the application awaits payment; then call complete.',
+  })
+  @ApiZodBody(RequestEvidenceUploadRequestSchema, {
+    fileName: 'evc-receipt.jpg',
+    mime: 'image/jpeg',
+    sizeBytes: 182113,
+    sha256: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
+  })
+  @ApiZodResponse(201, UploadTicketSchema)
+  @ApiResponse({ status: 409, description: 'NOT_AWAITING_PAYMENT' })
+  @ApiResponse(notYours)
+  requestEvidenceUpload(
+    @CurrentUser() user: AuthUser,
+    @Param('id', uuid) id: string,
+    @Body(new ZodPipe(RequestEvidenceUploadRequestSchema)) body: RequestEvidenceUploadRequest,
+  ): Promise<UploadTicket> {
+    return this.documents.requestEvidenceUpload(user, id, body);
+  }
+}
+
+/** Staff access to application documents and payment evidence in their department (audited). */
+@ApiTags('documents')
+@ApiBearerAuth()
+@Roles('OFFICER', 'SUPERVISOR')
+@ApiResponse({ status: 401, description: 'UNAUTHENTICATED' })
+@Controller('staff/documents')
+export class StaffDocumentsController {
+  constructor(private readonly documents: DocumentsService) {}
+
+  @Get(':id/download')
+  @ApiOperation({
+    summary: 'Open a document',
+    description:
+      'Roles: OFFICER/SUPERVISOR (own department). Virus-checked files only; every view is audited.',
+  })
+  @ApiZodResponse(200, DownloadTicketSchema)
+  @ApiResponse({ status: 403, description: 'FORBIDDEN (other department)' })
+  @ApiResponse({ status: 409, description: 'NOT_AVAILABLE' })
+  @ApiResponse({ status: 404, description: 'NOT_FOUND' })
+  download(@CurrentUser() user: AuthUser, @Param('id', uuid) id: string): Promise<DownloadTicket> {
+    return this.documents.staffDownload(user, id);
   }
 }

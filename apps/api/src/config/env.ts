@@ -32,6 +32,29 @@ export const EnvSchema = z.object({
   S3_PUBLIC_ENDPOINT: z.url().optional(),
   // clamav in every real environment; noop only for local development and tests.
   VIRUS_SCANNER: z.enum(['clamav', 'noop']).default('clamav'),
+  // Ed25519 signing keys for receipts/certificates: "keyId:base64(PKCS#8 DER)", comma-separated.
+  // The first key signs; the others are retired but still verify (ADR-0006).
+  SIGNING_KEYS: z
+    .string()
+    .min(1)
+    .transform((v, ctx) =>
+      v.split(',').map((pair) => {
+        const [id, b64] = pair.trim().split(':');
+        const der = Buffer.from(b64 ?? '', 'base64');
+        if (!id || !/^[A-Za-z0-9._-]{1,40}$/.test(id) || der.length < 40) {
+          ctx.addIssue({
+            code: 'custom',
+            message: 'each entry must be keyId:base64(PKCS#8 DER Ed25519 private key)',
+          });
+        }
+        return { id: id ?? '', der };
+      }),
+    ),
+  // Card gateway adapter. Only "mock" exists until a real gateway is chosen (refused in production).
+  CARD_GATEWAY: z.enum(['mock']).default('mock'),
+  CARD_WEBHOOK_SECRET: z.string().min(32, 'must be at least 32 characters'),
+  // Public base URL of this API (webhook target for the mock gateway, links in PDFs).
+  PUBLIC_API_URL: z.url(),
   SMTP_HOST: z.string().min(1),
   SMTP_PORT: z.coerce.number().int().min(1).max(65535),
   SMTP_FROM: z.string().min(3),
@@ -71,6 +94,9 @@ function crossCheck(env: Env): string[] {
   const problems: string[] = [];
   if (env.NODE_ENV === 'production' && env.VIRUS_SCANNER !== 'clamav') {
     problems.push('  - VIRUS_SCANNER: must be "clamav" in production');
+  }
+  if (env.NODE_ENV === 'production' && env.CARD_GATEWAY === 'mock') {
+    problems.push('  - CARD_GATEWAY: the mock gateway cannot run in production');
   }
   return problems;
 }

@@ -136,7 +136,55 @@ export const routes: RouteObject[] = [
               import('./routes/officer/OfficerHome').then((m) => ({ Component: m.OfficerHome })),
             ),
           },
+          {
+            path: 'payments',
+            ...page(() =>
+              import('./routes/officer/PaymentsQueuePage').then((m) => ({
+                Component: m.PaymentsQueuePage,
+              })),
+            ),
+          },
+          {
+            path: 'payments/:id',
+            ...page(() =>
+              import('./routes/officer/PaymentReviewPage').then((m) => ({
+                Component: m.PaymentReviewPage,
+              })),
+            ),
+          },
+          {
+            path: 'cash',
+            ...page(() =>
+              import('./routes/officer/CashDeskPage').then((m) => ({ Component: m.CashDeskPage })),
+            ),
+          },
+          {
+            path: 'refunds',
+            element: (
+              <RequireRole roles={['SUPERVISOR']}>
+                <Outlet />
+              </RequireRole>
+            ),
+            children: [
+              {
+                index: true,
+                ...page(() =>
+                  import('./routes/officer/RefundsPage').then((m) => ({
+                    Component: m.RefundsPage,
+                  })),
+                ),
+              },
+            ],
+          },
         ],
+      },
+      {
+        path: 'verify/r/:receiptNo',
+        ...page(() =>
+          import('./routes/verify/VerifyReceiptPage').then((m) => ({
+            Component: m.VerifyReceiptPage,
+          })),
+        ),
       },
       {
         path: 'admin',

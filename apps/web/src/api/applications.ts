@@ -22,11 +22,14 @@ export function useMyApplications() {
   });
 }
 
-export function useApplication(id: string) {
+export function useApplication(id: string, opts: { pollWhileAwaitingPayment?: boolean } = {}) {
   return useQuery({
     queryKey: detailKey(id),
     queryFn: ({ signal }) =>
       api(`/api/v1/applications/${id}`, { schema: ApplicationDetailSchema, signal }),
+    // After returning from card checkout, poll until the gateway webhook has confirmed it.
+    refetchInterval: (q) =>
+      opts.pollWhileAwaitingPayment && q.state.data?.status === 'AWAITING_PAYMENT' ? 3000 : false,
   });
 }
 

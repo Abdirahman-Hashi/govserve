@@ -18,6 +18,9 @@ const valid = {
   JWT_ACCESS_SECRET: 'a'.repeat(32),
   PII_KEYS: `k1:${Buffer.alloc(32, 1).toString('base64')}`,
   BLIND_INDEX_KEY: Buffer.alloc(32, 2).toString('base64'),
+  SIGNING_KEYS: `k1:${Buffer.alloc(48, 7).toString('base64')}`,
+  CARD_WEBHOOK_SECRET: 'w'.repeat(32),
+  PUBLIC_API_URL: 'http://localhost:3000',
 };
 
 describe('loadEnv', () => {
@@ -60,6 +63,12 @@ describe('loadEnv', () => {
     expect(
       loadEnv({ ...valid, NODE_ENV: 'development', VIRUS_SCANNER: 'noop' }).VIRUS_SCANNER,
     ).toBe('noop');
+  });
+
+  it('should refuse the mock card gateway in production', () => {
+    expect(() => loadEnv({ ...valid, NODE_ENV: 'production', VIRUS_SCANNER: 'clamav' })).toThrow(
+      /CARD_GATEWAY/,
+    );
   });
 
   it('should reject a short JWT secret', () => {

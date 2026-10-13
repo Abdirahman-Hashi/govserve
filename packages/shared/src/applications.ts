@@ -8,6 +8,7 @@ import {
   type RequiredDocument,
 } from './catalogue.js';
 import { FormSchemaDefinition, UiSchemaDefinition } from './forms.js';
+import { PaymentSchema } from './payments.js';
 
 const statuses = Object.values(ApplicationStatus) as [ApplicationStatus, ...ApplicationStatus[]];
 export const DocumentStatuses = [
@@ -53,6 +54,12 @@ export const RequestUploadRequestSchema = z.strictObject({
   sha256: Sha256HexSchema,
 });
 export type RequestUploadRequest = z.infer<typeof RequestUploadRequestSchema>;
+
+/** Payment evidence (screenshot / slip photo): same checks, the type is implied. */
+export const RequestEvidenceUploadRequestSchema = RequestUploadRequestSchema.omit({
+  docType: true,
+});
+export type RequestEvidenceUploadRequest = z.infer<typeof RequestEvidenceUploadRequestSchema>;
 
 // ─── Responses ───────────────────────────────────────────────────────────────
 
@@ -119,6 +126,11 @@ export const ApplicationDetailSchema = ApplicationSummarySchema.extend({
     }),
   ),
   feeAssessment: z.object({ lines: z.array(FeeLineJsonSchema), totalCents: z.string() }).nullable(),
+  /** Payments made towards this application, newest first. */
+  payments: z.array(PaymentSchema),
+  /** Sum of CONFIRMED payments and what is still owed (cents as strings; '0' before assessment). */
+  paidCents: z.string(),
+  balanceCents: z.string(),
   /** What the caller may do now; decided by the server (the UI only shows or hides buttons). */
   allowedActions: z.array(z.enum(ApplicationActions)),
   /** During corrections, only these fields/documents can change; null means all (draft). */

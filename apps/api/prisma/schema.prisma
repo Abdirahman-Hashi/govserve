@@ -419,6 +419,7 @@ model Application {
   documents      Document[]
   corrections    CorrectionRequest[]
   feeAssessment  FeeAssessment?
+  payments       Payment[]
 
   // Partial unique index for FR-031 is in the migration SQL.
   @@index([departmentId, status, slaDueAt])
@@ -545,4 +546,163 @@ model OutboxEvent {
 
   @@index([dispatchedAt, createdAt])
   @@map("outbox_event")
+}
+
+// ─── Payments, refunds, receipts (DATA_MODEL §4, STATE_MACHINES §2–3) ───────
+
+enum PaymentChannel {
+  MOBILE_MONEY
+  BANK
+  CASH
+  CARD
+}
+
+enum PaymentStatus {
+  INITIATED
+  PENDING_VERIFICATION
+  AWAITING_SUPERVISOR
+  CONFIRMED
+  REJECTED
+  FAILED
+  REVERSED
+}
+
+enum RefundReason {
+  WITHDRAWN_BEFORE_REVIEW
+  DUPLICATE_PAYMENT
+  OVERPAYMENT
+  ABANDONED_UNPAID
+}
+
+enum RefundStatus {
+  REQUESTED
+  APPROVED
+  DECLINED
+  COMPLETED
+  FAILED
+}
+
+enum SigningKeyStatus {
+  ACTIVE
+  RETIRED
+}
+
+/// Status changes only through PaymentStateService. Money is bigint cents.
+model Payment {
+  id                 String         @id @default(uuid(7)) @db.Uuid
+  applicationId      String         @db.Uuid
+  channel            PaymentChannel
+  provider           String
+  reference          String
+  /// Upper-cased, whitespace-free reference used for duplicate detection (FR-052).
+  referenceNorm      String
+  amountCents        BigInt
+  paidAt             DateTime       @db.Timestamptz(3)
+  status             PaymentStatus
+  idempotencyKey     String?        @unique
+  payerName          String?
+  evidenceDocumentId String?        @db.Uuid
+  recordedById       String?        @db.Uuid
+  firstConfirmedById String?        @db.Uuid
+  confirmedById      String?        @db.Uuid
+  confirmedAt        DateTime?      @db.Timestamptz(3)
+  rejectReasonCodeId String?        @db.Uuid
+  rejectNote         String?
+  overpaidCents      BigInt         @default(0)
+  version            Int            @default(0)
+  createdAt          DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime       @updatedAt @db.Timestamptz(3)
+
+  application Application    @relation(fields: [applicationId], references: [id])
+  events      PaymentEvent[]
+  refunds     Refund[]
+  receipt     Receipt?
+
+  // Partial unique index on (channel, provider, referenceNorm) for non-REJECTED rows is in the migration SQL.
+  @@index([applicationId])
+  @@index([status, createdAt])
+  @@map("payment")
+}
+
+/// Append-only. providerEventId makes gateway webhooks idempotent.
+model PaymentEvent {
+  id              String         @id @default(uuid(7)) @db.Uuid
+  paymentId       String         @db.Uuid
+  type            String
+  fromStatus      PaymentStatus?
+  toStatus        PaymentStatus?
+  actorId         String?        @db.Uuid
+  payload         Json           @default("{}")
+  providerEventId String?        @unique
+  at              DateTime       @default(now()) @db.Timestamptz(3)
+
+  payment Payment @relation(fields: [paymentId], references: [id])
+
+  @@index([paymentId, at])
+  @@map("payment_event")
+}
+
+/// Status changes only through RefundService.
+model Refund {
+  id               String          @id @default(uuid(7)) @db.Uuid
+  paymentId        String          @db.Uuid
+  reason           RefundReason
+  amountCents      BigInt
+  status           RefundStatus    @default(REQUESTED)
+  requestedById    String?         @db.Uuid
+  approvedById     String?         @db.Uuid
+  payoutMethod     PaymentChannel?
+  payoutReference  String?
+  providerRefundId String?         @unique
+  note             String?
+  version          Int             @default(0)
+  createdAt        DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime        @updatedAt @db.Timestamptz(3)
+
+  payment Payment @relation(fields: [paymentId], references: [id])
+
+  @@index([paymentId])
+  @@index([status, createdAt])
+  @@map("refund")
+}
+
+/// Issued once per CONFIRMED payment; the signed payload is immutable, so the PDF is rendered on demand.
+model Receipt {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  receiptNo     String   @unique
+  paymentId     String   @unique @db.Uuid
+  applicationId String   @db.Uuid
+  amountCents   BigInt
+  issuedAt      DateTime @db.Timestamptz(3)
+  payloadJson   Json
+  signature     Bytes
+  keyId         String
+
+  payment    Payment    @relation(fields: [paymentId], references: [id])
+  signingKey SigningKey @relation(fields: [keyId], references: [id])
+
+  @@index([applicationId])
+  @@map("receipt")
+}
+
+/// Gap-free counters (e.g. receipt:2026), incremented atomically inside the issuing transaction.
+model Counter {
+  name      String @id
+  nextValue BigInt
+
+  @@map("counter")
+}
+
+/// Public halves of the Ed25519 signing keys (private keys live in the secret store only).
+model SigningKey {
+  id          String           @id
+  algorithm   String           @default("Ed25519")
+  publicKey   Bytes
+  status      SigningKeyStatus
+  activatedAt DateTime         @default(now()) @db.Timestamptz(3)
+  retiredAt   DateTime?        @db.Timestamptz(3)
+
+  receipts Receipt[]
+
+  @@map("signing_key")
 }

@@ -22,7 +22,10 @@ function navFor(role: Role | null): NavItem[] {
     case 'OFFICER':
     case 'SUPERVISOR':
       return [
-        { to: '/officer', label: t.nav.officer },
+        { to: '/officer', label: t.nav.officer, end: true },
+        { to: '/officer/payments', label: t.nav.payments },
+        { to: '/officer/cash', label: t.nav.cashDesk },
+        ...(role === 'SUPERVISOR' ? [{ to: '/officer/refunds', label: t.nav.refunds }] : []),
         { to: '/account/profile', label: t.nav.profile },
       ];
     case 'ADMIN':

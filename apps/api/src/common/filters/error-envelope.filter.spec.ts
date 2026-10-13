@@ -1,3 +1,4 @@
+import { ThrottlerException } from '@nestjs/throttler';
 import { BadRequestException, type ArgumentsHost, Logger, NotFoundException } from '@nestjs/common';
 import { ErrorEnvelopeFilter } from './error-envelope.filter';
 
@@ -38,6 +39,19 @@ describe('ErrorEnvelopeFilter', () => {
         message: 'Validation failed',
         details: ['email must be an email'],
         requestId: 'req-12345678',
+      },
+    });
+  });
+
+  it('should give a plain message when the caller is rate limited', () => {
+    expect(run(new ThrottlerException())).toEqual({
+      status: 429,
+      body: {
+        error: {
+          code: 'RATE_LIMITED',
+          message: 'Too many attempts. Please wait a minute and try again.',
+          requestId: 'req-12345678',
+        },
       },
     });
   });

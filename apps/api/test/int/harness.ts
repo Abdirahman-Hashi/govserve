@@ -83,7 +83,7 @@ export async function startHarness(opts: { rateLimit?: boolean } = {}): Promise<
     .overrideProvider(NOTIFICATION_PORT)
     .useValue(mail)
     .compile();
-  const app = moduleRef.createNestApplication({ bufferLogs: true });
+  const app = moduleRef.createNestApplication({ bufferLogs: true, rawBody: true });
   configureApp(app);
   await app.init();
   return {

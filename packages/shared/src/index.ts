@@ -6,3 +6,4 @@ export * from './auth.js';
 export * from './forms.js';
 export * from './catalogue.js';
 export * from './applications.js';
+export * from './payments.js';

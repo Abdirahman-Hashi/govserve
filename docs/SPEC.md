@@ -264,3 +264,4 @@ integration with criminal-record systems.
 | O-6 | Working week and public holiday calendar | Abdirahman Hashi | Phase 06 |
 | O-7 | Card gateway choice | Abdirahman Hashi | Before real card payments |
 | O-8 | Hosting target | Abdirahman Hashi | Phase 11 |
+| O-9 | Official list of accepted mobile-money wallets (draft: EVC Plus, Sahal, eDahab, Jeeb, Premier Wallet, Other) | Abdirahman Hashi | Go-live |

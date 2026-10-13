@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { RedisContainer, type StartedRedisContainer } from '@testcontainers/redis';
@@ -96,5 +96,9 @@ export function testEnv(
     JWT_ACCESS_SECRET: randomBytes(32).toString('base64'),
     PII_KEYS: `test1:${randomBytes(32).toString('base64')}`,
     BLIND_INDEX_KEY: randomBytes(32).toString('base64'),
+    SIGNING_KEYS: `test-1:${generateKeyPairSync('ed25519').privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64')}`,
+    CARD_GATEWAY: 'mock',
+    CARD_WEBHOOK_SECRET: randomBytes(32).toString('base64'),
+    PUBLIC_API_URL: 'http://127.0.0.1:0',
   };
 }

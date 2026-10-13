@@ -9,7 +9,7 @@ Tick a phase only when lint, typecheck and tests are green and the phase's accep
 | 02 | Auth, JWT, RBAC, users | 01 | [x] |
 | 03 | Service catalogue + configurable forms + fee engine | 02 | [x] |
 | 04 | Applications + document uploads | 03 | [x] |
-| 05 | Fee assessment, payments, verifiable receipts | 04 | [ ] |
+| 05 | Fee assessment, payments, verifiable receipts | 04 | [x] |
 | 06 | Officer work queues + review workflow | 04, 05 | [ ] |
 | 07 | Email notifications | 06 | [ ] |
 | 08 | Search + application/transaction history | 06 | [ ] |
@@ -35,3 +35,6 @@ Follow-ups: official fees/validity/SLAs still O-1–O-3 (seed is TEST); district
 
 **Phase 04 (2026-10-13):** Applications with the full A1–A22 transition table in ApplicationStateService (history + AuditLog + outbox per transition, optimistic locking, 409 for every disallowed move), drafts with autosave, submit (form + document checks, GS reference, immutable FeeAssessment), withdraw, delete, idle-draft purge; correction field locking; one open application per subject; private uploads via pre-signed PUT with size/content-type/SHA-256 verification, quarantine and virus-scan port (ClamAV/noop), every document change audited; citizen wizard, checklist, status page; session refresh rate limit raised to 60/min (shared carrier NAT).
 Follow-ups: verify the ClamAV adapter against a real clamd (`--profile scan`) before Phase 11; refunds on withdrawal (Phase 05) and resubmission A12 (Phase 06); outbox relay in Phase 07; web entry bundle 205.6 KB gz.
+
+**Phase 05 (2026-10-13):** Payments (mobile money/bank evidence, cash desk, card via CardGateway port + mock with real HMAC webhooks, reconciliation) through a payment/refund state service (P1–P11, R1–R6) with event + audit + outbox per change; >$100 manual payments need a second, different supervisor; partial payments queue the application at the full fee (A5) with working-day SLA, overpayment recorded; refunds capped under row lock, auto-requested on withdrawal before review and A7 abandonment; gap-free Ed25519-signed receipts (PDF on demand, QR → public /verify/r with client-side signature check); officer queue, review, cash desk and supervisor refunds UI.
+Follow-ups: choose the real card gateway (O-7) and mobile-money list (O-9); browser-level staff fixtures for e2e (Phase 06); duplicate-certificate payments A6 (Phase 06); web entry bundle 207 KB gz.

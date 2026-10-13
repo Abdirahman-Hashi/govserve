@@ -12,6 +12,7 @@ import {
 import {
   type DocumentDto,
   type DownloadTicket,
+  type RequestEvidenceUploadRequest,
   type RequestUploadRequest,
   type RequiredDocument,
   type UploadTicket,
@@ -19,14 +20,14 @@ import {
 import { Queue } from 'bullmq';
 import { AuditService } from '../audit/audit.service';
 import { type AuthUser } from '../auth/auth.types';
-import { assertCitizenOwns } from '../common/guards/scope';
+import { assertCitizenOwns, assertSameDepartment } from '../common/guards/scope';
 import { sniffMime, SNIFF_BYTES } from './file-type';
 import { VIRUS_SCAN_PORT, type VirusScanPort } from './virus-scan.port';
 import { type Document, type Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { STORAGE_PORT, type StoragePort } from '../storage/storage.port';
 import { editability } from '../applications/applications.service';
-import { toDocumentDto } from './documents.mapper';
+import { PAYMENT_EVIDENCE, toDocumentDto } from './documents.mapper';
 
 export const DOCUMENTS_QUEUE = 'documents';
 export const SCAN_JOB = 'scan';
@@ -100,6 +101,63 @@ export class DocumentsService {
         details: problems,
       });
     }
+    return this.createUpload(user, app.id, app.departmentId, body);
+  }
+
+  /**
+   * Payment evidence (screenshot or deposit slip) while the application awaits payment. Same
+   * verification and scanning as any upload; it is linked to the payment when that is reported.
+   */
+  async requestEvidenceUpload(
+    user: AuthUser,
+    applicationId: string,
+    body: RequestEvidenceUploadRequest,
+  ): Promise<UploadTicket> {
+    const app = await this.prisma.application.findUnique({ where: { id: applicationId } });
+    if (!app) throw new NotFoundException();
+    assertCitizenOwns(user, app.applicantId);
+    if (app.status !== 'AWAITING_PAYMENT') {
+      throw new ConflictException({
+        code: 'NOT_AWAITING_PAYMENT',
+        message: 'This application is not awaiting payment.',
+      });
+    }
+    return this.createUpload(user, app.id, app.departmentId, {
+      ...body,
+      docType: PAYMENT_EVIDENCE,
+    });
+  }
+
+  /** Staff of the application's department open a document; every view is audited. */
+  async staffDownload(user: AuthUser, documentId: string): Promise<DownloadTicket> {
+    const doc = await this.prisma.document.findUnique({ where: { id: documentId } });
+    if (!doc?.applicationId) throw new NotFoundException();
+    const departmentId = await this.departmentOf(this.prisma, doc);
+    assertSameDepartment(user, departmentId);
+    // Staff only ever open files that passed the virus scan.
+    if (doc.status !== 'CLEAN') {
+      throw new ConflictException({
+        code: 'NOT_AVAILABLE',
+        message: 'This file is not available yet.',
+      });
+    }
+    await this.prisma.$transaction((tx) =>
+      this.record(tx, user, 'DOCUMENT_VIEWED', doc, departmentId, { after: {} }),
+    );
+    const url = await this.storage.presignGet({
+      key: doc.storageKey,
+      expiresInSeconds: DOWNLOAD_URL_TTL_SECONDS,
+      downloadName: doc.originalName,
+    });
+    return { url, expiresAt: new Date(Date.now() + DOWNLOAD_URL_TTL_SECONDS * 1000).toISOString() };
+  }
+
+  private async createUpload(
+    user: AuthUser,
+    applicationId: string,
+    departmentId: string,
+    body: RequestUploadRequest,
+  ): Promise<UploadTicket> {
     const pending = await this.prisma.document.count({
       where: { applicationId, status: 'PENDING_UPLOAD' },
     });
@@ -109,7 +167,6 @@ export class DocumentsService {
         message: 'Finish or retry your current uploads first.',
       });
     }
-
     const doc = await this.prisma.$transaction(async (tx) => {
       const created = await tx.document.create({
         data: {
@@ -124,7 +181,7 @@ export class DocumentsService {
           sha256: body.sha256,
         },
       });
-      await this.record(tx, user, 'DOCUMENT_UPLOAD_REQUESTED', created, app.departmentId, {
+      await this.record(tx, user, 'DOCUMENT_UPLOAD_REQUESTED', created, departmentId, {
         after: { status: 'PENDING_UPLOAD' },
       });
       return created;

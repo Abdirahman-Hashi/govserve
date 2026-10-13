@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { ApplicationsModule } from '../applications/applications.module';
 import { APP_CONFIG, type AppConfig } from '../config/config.module';
 import { ConfigAdminModule } from '../config-admin/config-admin.module';
+import { PaymentsModule } from '../payments/payments.module';
 import {
   MAINTENANCE_QUEUE,
   MaintenanceProcessor,
@@ -24,6 +25,7 @@ import { PurgeService } from './purge.service';
     BullModule.registerQueue({ name: MAINTENANCE_QUEUE }),
     ApplicationsModule,
     ConfigAdminModule,
+    PaymentsModule,
   ],
   providers: [PurgeService, MaintenanceProcessor, MaintenanceScheduler],
   exports: [PurgeService],

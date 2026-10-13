@@ -39,7 +39,10 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { STORAGE_PORT, type StoragePort } from '../storage/storage.port';
 import { ApplicationStateService } from './application-state.service';
-import { toDocumentDto, USABLE_STATUSES } from '../documents/documents.mapper';
+import { PAYMENT_EVIDENCE, toDocumentDto, USABLE_STATUSES } from '../documents/documents.mapper';
+import { confirmedTotal, max } from '../payments/money';
+import { paymentInclude, type PaymentWithReceipt, toPaymentDto } from '../payments/payment.mapper';
+import { RefundsService } from '../payments/refunds.service';
 import { childSubjectIdentity, NATIONAL_ID_FIELD, splitPii, subjectName } from './form-data';
 
 type Full = Application & {
@@ -49,6 +52,7 @@ type Full = Application & {
   history: ApplicationStatusHistory[];
   documents: Document[];
   feeAssessment: FeeAssessment | null;
+  payments: PaymentWithReceipt[];
   corrections: (CorrectionRequest & { items: CorrectionItem[] })[];
 };
 
@@ -57,7 +61,12 @@ const include = {
   serviceVersion: true,
   data: true,
   history: { orderBy: { at: 'asc' } },
-  documents: { where: { supersededById: null }, orderBy: { createdAt: 'asc' } },
+  // Payment evidence belongs to payments, not to the application's required documents.
+  documents: {
+    where: { supersededById: null, docType: { not: PAYMENT_EVIDENCE } },
+    orderBy: { createdAt: 'asc' },
+  },
+  payments: { include: paymentInclude, orderBy: { createdAt: 'desc' } },
   feeAssessment: true,
   corrections: { where: { resolvedAt: null }, include: { items: true } },
 } as const satisfies Prisma.ApplicationInclude;
@@ -92,6 +101,7 @@ export class ApplicationsService {
     private readonly state: ApplicationStateService,
     private readonly crypto: CryptoService,
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
+    private readonly refunds: RefundsService,
   ) {}
 
   // ─── A1: create a draft ─────────────────────────────────────────────────────
@@ -342,7 +352,10 @@ export class ApplicationsService {
         ctx,
         data: { decidedAt: new Date() },
       });
-      // TODO(Phase 05): if never claimed, create refund requests for confirmed payments (R1).
+      // A22 / FR-058: money is returned only if no officer had started reviewing (A8 never ran).
+      const everClaimed = app.history.some((h) => h.toStatus === 'IN_REVIEW');
+      if (!everClaimed)
+        await this.refunds.requestForApplication(tx, app.id, 'WITHDRAWN_BEFORE_REVIEW');
       // TODO(Phase 06): cancel scheduled appointments.
     });
     return this.get(user, id);
@@ -453,6 +466,7 @@ export class ApplicationsService {
     const schema = formSchemaOf(app.serviceVersion);
     const edit = editability(app);
     const open = app.corrections[0];
+    const paid = confirmedTotal(app.payments);
     return {
       ...toSummary(app, app.service),
       kind: app.kind,
@@ -482,6 +496,12 @@ export class ApplicationsService {
             totalCents: app.feeAssessment.totalCents.toString(),
           }
         : null,
+      payments: app.payments.map(toPaymentDto),
+      paidCents: paid.toString(),
+      balanceCents: (app.feeAssessment
+        ? max(app.feeAssessment.totalCents - paid, 0n)
+        : 0n
+      ).toString(),
       allowedActions: allowedActions(this.state, app, user),
       editableFields: edit.fields,
       editableDocTypes: edit.docTypes,

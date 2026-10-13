@@ -11,6 +11,7 @@ import { ApiError } from '../../api/client';
 import { FormAlert } from '../../components/form';
 import { t } from '../../strings';
 import { ApplicationWizard } from './ApplicationWizard';
+import { PaymentList, PaymentPanel } from './PaymentPanel';
 import { StatusBadge } from './StatusBadge';
 
 const a = t.applications;
@@ -64,11 +65,11 @@ function StatusView({ app }: { app: ApplicationDetail }) {
               </dd>
             </div>
           </dl>
-          {app.status === 'AWAITING_PAYMENT' && (
-            <p className="text-sm text-slate-700">{a.detail.payNext}</p>
-          )}
         </section>
       )}
+
+      {app.status === 'AWAITING_PAYMENT' && app.balanceCents !== '0' && <PaymentPanel app={app} />}
+      <PaymentList payments={app.payments} />
 
       <section aria-labelledby="docs" className="space-y-2">
         <h2 id="docs" className="text-lg font-semibold">
@@ -195,7 +196,9 @@ function DeleteDraft({ id }: { id: string }) {
 
 export function ApplicationPage() {
   const { id = '' } = useParams();
-  const app = useApplication(id);
+  const app = useApplication(id, {
+    pollWhileAwaitingPayment: new URLSearchParams(window.location.search).has('card'),
+  });
   if (app.isPending) return <p role="status">{t.loading}</p>;
   if (app.isError) return <FormAlert>{t.errors.generic}</FormAlert>;
   if (app.data.status === 'DRAFT') {

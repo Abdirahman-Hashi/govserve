@@ -155,3 +155,28 @@ export class ConfigAdminController {
     return this.config.updateReasonCode(user, id, body, ctx);
   }
 }
+
+/** Read-only reason codes for staff decisions (payment rejection now; review decisions in Phase 06). */
+@ApiTags('staff')
+@ApiBearerAuth()
+@Roles('OFFICER', 'SUPERVISOR')
+@ApiResponse({ status: 401, description: 'UNAUTHENTICATED' })
+@ApiResponse({ status: 403, description: 'FORBIDDEN (not staff)' })
+@Controller('staff')
+export class StaffReasonCodesController {
+  constructor(private readonly config: ConfigAdminService) {}
+
+  @Get('reason-codes')
+  @ApiOperation({
+    summary: 'Active reason codes',
+    description: 'Roles: OFFICER, SUPERVISOR. Optionally filtered by kind.',
+  })
+  @ApiQuery({ name: 'kind', required: false, enum: ReasonCodeKinds })
+  @ApiZodResponse(200, z.array(ReasonCodeSchema))
+  async reasonCodes(
+    @Query('kind', new ZodPipe(z.enum(ReasonCodeKinds).optional()))
+    kind?: (typeof ReasonCodeKinds)[number],
+  ): Promise<ReasonCode[]> {
+    return (await this.config.listReasonCodes(kind)).filter((r) => r.active);
+  }
+}

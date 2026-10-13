@@ -15,6 +15,7 @@ import { DocumentsModule } from './documents/documents.module';
 import { HealthModule } from './health/health.module';
 import { JobsModule } from './jobs/jobs.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { PaymentsModule } from './payments/payments.module';
 import { UsersModule } from './users/users.module';
 import { LoggerModule } from './logging/logger.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -45,6 +46,7 @@ import { StorageModule } from './storage/storage.module';
     ConfigAdminModule,
     ApplicationsModule,
     DocumentsModule,
+    PaymentsModule,
     JobsModule,
     HealthModule,
   ],

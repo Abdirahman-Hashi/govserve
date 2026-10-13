@@ -46,6 +46,9 @@ export class ErrorEnvelopeFilter implements ExceptionFilter {
           ? response.message
           : exception.message;
       body = { code: CODE_BY_STATUS[status] ?? `HTTP_${status}`, message: exception.message };
+      // Library messages are not written for citizens (e.g. "ThrottlerException: Too Many Requests").
+      if (status === HttpStatus.TOO_MANY_REQUESTS)
+        body.message = 'Too many attempts. Please wait a minute and try again.';
       // class-validator returns an array of messages; surface them as details.
       if (exception instanceof BadRequestException && Array.isArray(message)) {
         body = { code: 'VALIDATION_FAILED', message: 'Validation failed', details: message };

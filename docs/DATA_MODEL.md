@@ -171,6 +171,8 @@ ruleSnapshot jsonb (versionNo, base, perCopy, feeIsTest), assessedAt`.
 | status | enum PaymentStatus | STATE_MACHINES §2 |
 | idempotencyKey | text? unique | card initiate |
 | payerName | text? | cash |
+| evidenceDocumentId | FK Document? | mobile money / bank screenshot or slip photo |
+| confirmedAt | timestamptz? | |
 | recordedById | FK User? | cash |
 | firstConfirmedById, confirmedById | FK User? | check: different users when both are set and the second confirmation was by a supervisor |
 | rejectReasonCodeId, rejectNote | FK?, text? | |
@@ -191,7 +193,9 @@ under a row lock).
 
 ### Receipt
 `id, receiptNo unique (R-YYYY-NNNNNN), paymentId unique FK, applicationId FK, amountCents, issuedAt, payloadJson jsonb
-(canonical), signature bytea, keyId FK SigningKey, pdfStorageKey`. Status is derived from the payment and its refunds.
+(canonical), signature bytea, keyId FK SigningKey`. Status is derived from the payment and its refunds. The PDF is
+rendered on demand from the immutable signed payload, so nothing is stored (changed 2026-10-13, Phase 05). Receipt
+numbers use the fiscal year = calendar year in Africa/Mogadishu.
 
 ### Counter (gap-free numbering)
 `name text PK (e.g. receipt:2026, cert:ADR:2026), nextValue bigint`. Incremented with `SELECT … FOR UPDATE` inside

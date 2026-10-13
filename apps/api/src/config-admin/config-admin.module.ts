@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
-import { ConfigAdminController } from './config-admin.controller';
+import { ConfigAdminController, StaffReasonCodesController } from './config-admin.controller';
 import { ConfigAdminService } from './config-admin.service';
 
 @Module({
-  controllers: [ConfigAdminController],
+  controllers: [ConfigAdminController, StaffReasonCodesController],
   providers: [ConfigAdminService],
   exports: [ConfigAdminService],
 })
