@@ -27,6 +27,7 @@ import { type Request, type Response } from 'express';
 import { Public } from '../common/decorators/public.decorator';
 import { APP_CONFIG, type AppConfig } from '../config/config.module';
 import { CARD_GATEWAY, type CardGatewayPort, CardWebhookEventSchema } from './card-gateway.port';
+import { MetricsService } from '../metrics/metrics.service';
 import { MockCardGateway } from './mock-card-gateway';
 import { PaymentsService } from './payments.service';
 import { SIGNATURE_HEADER, verifyWebhook } from './webhook-signature';
@@ -41,6 +42,7 @@ export class CardWebhookController {
   constructor(
     private readonly payments: PaymentsService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
+    private readonly metrics: MetricsService,
   ) {}
 
   @Post('card')
@@ -64,6 +66,7 @@ export class CardWebhookController {
   ): Promise<{ result: string }> {
     const check = verifyWebhook(this.config.CARD_WEBHOOK_SECRET, req.rawBody, signature);
     if (check !== 'OK') {
+      this.metrics.webhookFailures.inc({ reason: 'signature' });
       this.logger.warn({ check }, 'Rejected card webhook');
       throw new UnauthorizedException({
         code: 'BAD_SIGNATURE',
@@ -72,12 +75,20 @@ export class CardWebhookController {
     }
     // Parse the exact bytes that were signed, not a re-serialised body.
     const parsed = CardWebhookEventSchema.safeParse(JSON.parse(req.rawBody!.toString('utf8')));
-    if (!parsed.success)
+    if (!parsed.success) {
+      this.metrics.webhookFailures.inc({ reason: 'payload' });
       throw new UnprocessableEntityException({
         code: 'VALIDATION_FAILED',
         message: 'Unexpected webhook payload',
       });
-    return { result: await this.payments.onCardEvent(parsed.data) };
+    }
+    try {
+      return { result: await this.payments.onCardEvent(parsed.data) };
+    } catch (err) {
+      // The gateway retries; repeated failures page someone (NFR-012).
+      this.metrics.webhookFailures.inc({ reason: 'processing' });
+      throw err;
+    }
   }
 }
 

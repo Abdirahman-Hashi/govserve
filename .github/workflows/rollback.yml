@@ -1,0 +1,41 @@
+# Redeploys an earlier release; its images are still in GHCR. Migrations only move forward, so roll
+# back only to a release whose code works with the current schema (RUNBOOK §Rollback).
+name: Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Where to roll back
+        type: choice
+        options: [staging, production]
+        required: true
+      release:
+        description: Full commit SHA of the release to restore (see /opt/govserve/history on the VM)
+        type: string
+        required: true
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: The release must be a full commit SHA
+        env:
+          RELEASE: ${{ inputs.release }}
+        run: |
+          [[ "$RELEASE" =~ ^[0-9a-f]{40}$ ]] || { echo "Give the full 40-character SHA"; exit 1; }
+
+  rollback:
+    needs: validate
+    uses: ./.github/workflows/release.yml
+    with:
+      environment: ${{ inputs.environment }}
+      release: ${{ inputs.release }}
+    secrets: inherit

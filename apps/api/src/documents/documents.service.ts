@@ -30,7 +30,8 @@ import { STORAGE_PORT, type StoragePort } from '../storage/storage.port';
 import { editability } from '../applications/applications.service';
 import { PAYMENT_EVIDENCE, toDocumentDto } from './documents.mapper';
 
-export const DOCUMENTS_QUEUE = 'documents';
+export { DOCUMENTS_QUEUE } from '../common/queue-names';
+import { DOCUMENTS_QUEUE } from '../common/queue-names';
 export const SCAN_JOB = 'scan';
 
 const UPLOAD_URL_TTL_SECONDS = 300;

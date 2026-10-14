@@ -4,6 +4,11 @@ The API is served under `/api/v1`. `info.version` in the OpenAPI document is the
 schema, example, role statement or error response needs a version bump and a note here. Then record it with
 `pnpm --filter api openapi:lock`; the contract test (`src/openapi-contract.spec.ts`) fails until you do.
 
+## 1.11.0 (2026-10-14, Phase 11)
+- `ApplicationDetail.cardPaymentsEnabled`: false when no card gateway is configured (production until O-7). Starting a
+  card payment then returns 409 `CARD_UNAVAILABLE`.
+- `GET /metrics` (Prometheus, outside `/api/v1`, bearer `METRICS_TOKEN`) is excluded from this document.
+
 ## 1.10.0 (2026-10-14, Phase 10)
 - Every operation documents its auth (`security`, with explicit `[]` for public operations), roles, examples for each JSON
   request, response and parameter, and its error codes using the shared `ErrorEnvelope` schema. Standard 401, 422, 429 and

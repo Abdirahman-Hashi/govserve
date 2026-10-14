@@ -1,24 +1,24 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Client } from 'pg';
 
 /**
- * Development only: creates (or updates the password of) the login role named in
- * DATABASE_APP_URL as a member of govserve_app_rw, connecting as the owner (DATABASE_URL).
- * Production creates this role from the secret store (ADR-0010). Never prints the password.
+ * Creates (or updates the password of) the login role named in DATABASE_APP_URL as a member of
+ * govserve_app_rw, connecting as the owner (DATABASE_URL). Locally the values come from .env; in
+ * staging and production the migrate job runs this with both URLs from the secret store
+ * (`*_FILE` → /run/secrets, ADR-0010). Never prints the password.
  */
+function secret(name: string): string | undefined {
+  const file = process.env[`${name}_FILE`];
+  if (file && !process.env[name]) return readFileSync(file, 'utf8').replace(/\r?\n$/, '');
+  return process.env[name];
+}
+
 async function main(): Promise<void> {
   const envFile = resolve(__dirname, '../../../.env');
   if (existsSync(envFile)) process.loadEnvFile(envFile);
-  if (process.env['NODE_ENV'] === 'production') {
-    process.stderr.write(
-      'Refusing to manage database roles in production; use the secret store.\n',
-    );
-    process.exitCode = 1;
-    return;
-  }
-  const owner = process.env['DATABASE_URL'];
-  const app = process.env['DATABASE_APP_URL'];
+  const owner = secret('DATABASE_URL');
+  const app = secret('DATABASE_APP_URL');
   if (!owner || !app) {
     process.stderr.write('Set DATABASE_URL (owner) and DATABASE_APP_URL (application role).\n');
     process.exitCode = 1;

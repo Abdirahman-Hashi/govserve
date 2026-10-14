@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from 'node:fs';
 import { z } from 'zod';
 
 const booleanString = z.enum(['true', 'false']).transform((v) => v === 'true');
@@ -5,6 +6,9 @@ const booleanString = z.enum(['true', 'false']).transform((v) => v === 'true');
 /** Every environment variable the API reads. Documented in /.env.example. */
 export const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  // Which deployment this is. Production-only refusals (mock gateway, e2e fixtures) key on this, so
+  // staging can run production builds with test adapters. Required when NODE_ENV=production.
+  DEPLOY_ENV: z.enum(['local', 'staging', 'production']).default('local'),
   APP_VERSION: z.string().min(1).default('dev'),
   API_PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   CORS_ORIGINS: z
@@ -20,9 +24,9 @@ export const EnvSchema = z.object({
   RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(100),
   // Disable only in automated tests that exercise many auth calls from one IP.
   RATE_LIMIT_ENABLED: booleanString.default(true),
-  DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
-  // Runtime connection as a member of govserve_app_rw (INSERT/SELECT only on audit_log, ADR-0010).
-  // DATABASE_URL stays the owner, used by migrations. Required to differ in production.
+  // The owner, used by migrations. Deployed API containers do not get it (ADR-0010): they connect
+  // with DATABASE_APP_URL as a member of govserve_app_rw (INSERT/SELECT only on audit tables).
+  DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }).optional(),
   DATABASE_APP_URL: z.url({ protocol: /^postgres(ql)?$/ }).optional(),
   REDIS_URL: z.url({ protocol: /^rediss?$/ }),
   S3_ENDPOINT: z.url(),
@@ -53,14 +57,22 @@ export const EnvSchema = z.object({
         return { id: id ?? '', der };
       }),
     ),
-  // Card gateway adapter. Only "mock" exists until a real gateway is chosen (refused in production).
-  CARD_GATEWAY: z.enum(['mock']).default('mock'),
+  // Card gateway adapter: "mock" (local, staging) or "disabled" (no card payments) until a real
+  // gateway is chosen (O-7). The mock is refused when DEPLOY_ENV=production.
+  CARD_GATEWAY: z.enum(['mock', 'disabled']).default('mock'),
   CARD_WEBHOOK_SECRET: z.string().min(32, 'must be at least 32 characters'),
   // Public base URL of this API (webhook target for the mock gateway, links in PDFs).
   PUBLIC_API_URL: z.url(),
   SMTP_HOST: z.string().min(1),
   SMTP_PORT: z.coerce.number().int().min(1).max(65535),
   SMTP_FROM: z.string().min(3),
+  SMTP_USER: z.string().min(1).optional(),
+  SMTP_PASSWORD: z.string().min(1).optional(),
+  // true: implicit TLS (port 465). Otherwise SMTP_REQUIRE_TLS forces STARTTLS.
+  SMTP_SECURE: booleanString.default(false),
+  SMTP_REQUIRE_TLS: booleanString.default(false),
+  // Bearer token Prometheus sends to /metrics. Required in production.
+  METRICS_TOKEN: z.string().min(32, 'must be at least 32 characters').optional(),
   // Notification delivery (FR-102): attempts before dead-letter, first retry delay, outbox poll.
   NOTIFY_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(5),
   NOTIFY_BACKOFF_MS: z.coerce.number().int().min(10).default(30_000),
@@ -101,22 +113,64 @@ export type Env = z.infer<typeof EnvSchema>;
 /** Rules that span several variables. */
 function crossCheck(env: Env): string[] {
   const problems: string[] = [];
+  if (env.NODE_ENV === 'production' && env.DEPLOY_ENV === 'local') {
+    problems.push('  - DEPLOY_ENV: set "staging" or "production" for production builds');
+  }
   if (env.NODE_ENV === 'production' && env.VIRUS_SCANNER !== 'clamav') {
-    problems.push('  - VIRUS_SCANNER: must be "clamav" in production');
+    problems.push('  - VIRUS_SCANNER: must be "clamav" in production builds');
+  }
+  if (!env.DATABASE_URL && !env.DATABASE_APP_URL) {
+    problems.push('  - DATABASE_APP_URL: required (or DATABASE_URL for local development)');
   }
   if (env.NODE_ENV === 'production') {
-    const owner = new URL(env.DATABASE_URL).username;
-    const app = env.DATABASE_APP_URL ? new URL(env.DATABASE_APP_URL).username : owner;
-    if (app === owner) {
+    if (!env.DATABASE_APP_URL) {
       problems.push(
-        '  - DATABASE_APP_URL: production must connect as the restricted application role, not the owner',
+        '  - DATABASE_APP_URL: production builds must connect as the restricted application role',
+      );
+    } else if (
+      env.DATABASE_URL &&
+      new URL(env.DATABASE_URL).username === new URL(env.DATABASE_APP_URL).username
+    ) {
+      problems.push(
+        '  - DATABASE_APP_URL: production builds must connect as the restricted application role, not the owner',
+      );
+    }
+    if (!env.METRICS_TOKEN) problems.push('  - METRICS_TOKEN: required in production builds');
+  }
+  if (env.DEPLOY_ENV === 'production' && env.CARD_GATEWAY === 'mock') {
+    problems.push(
+      '  - CARD_GATEWAY: the mock gateway cannot run in production (use "disabled" until O-7)',
+    );
+  }
+  if (Boolean(env.SMTP_USER) !== Boolean(env.SMTP_PASSWORD)) {
+    problems.push('  - SMTP_USER / SMTP_PASSWORD: set both or neither');
+  }
+  return problems;
+}
+
+/**
+ * Secrets can come as files (Docker secrets mounted at /run/secrets): `X_FILE=/run/secrets/x`
+ * fills `X` when it is not set directly, so secrets never sit in the container environment.
+ */
+export function resolveFileSecrets(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = { ...source };
+  for (const key of Object.keys(EnvSchema.shape)) {
+    // Compose passes unset optional settings as empty strings: treat them as unset.
+    if (out[key] === '') delete out[key];
+    const file = source[`${key}_FILE`];
+    if (!file || out[key] !== undefined) continue;
+    // Compose creates no file for an empty secret: unset, so a required one fails by its own name.
+    if (!existsSync(file)) continue;
+    try {
+      const value = readFileSync(file, 'utf8').replace(/\r?\n$/, '');
+      if (value !== '') out[key] = value;
+    } catch {
+      throw new Error(
+        `Invalid environment configuration:\n  - ${key}_FILE: cannot read the secret file`,
       );
     }
   }
-  if (env.NODE_ENV === 'production' && env.CARD_GATEWAY === 'mock') {
-    problems.push('  - CARD_GATEWAY: the mock gateway cannot run in production');
-  }
-  return problems;
+  return out;
 }
 
 /**
@@ -124,7 +178,7 @@ function crossCheck(env: Env): string[] {
  * variables but never echoes their values (they may be secrets).
  */
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
-  const result = EnvSchema.safeParse(source);
+  const result = EnvSchema.safeParse(resolveFileSecrets(source));
   if (!result.success) {
     const problems = result.error.issues
       .map((issue) => `  - ${issue.path.join('.')}: ${issue.message}`)

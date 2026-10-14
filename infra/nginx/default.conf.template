@@ -1,0 +1,48 @@
+# GovServe web (FR/NFR-001). TLS and HSTS are added by the edge (Caddy).
+server {
+  listen 8080;
+  server_name _;
+  server_tokens off;
+  root /usr/share/nginx/html;
+
+  gzip on;
+  gzip_comp_level 6;
+  gzip_types text/css application/javascript application/json image/svg+xml;
+  # Uploads go straight to the object store with pre-signed PUTs; the API only takes JSON.
+  client_max_body_size 2m;
+
+  location = /healthz {
+    access_log off;
+    default_type text/plain;
+    return 200 "ok\n";
+  }
+
+  # API and probes. /metrics is deliberately not proxied: it is for Prometheus on the internal network.
+  location /api/ {
+    proxy_pass http://${API_UPSTREAM};
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+    proxy_read_timeout 120s;
+    proxy_buffering off; # CSV exports stream
+  }
+  location ~ ^/(health|ready)$ {
+    proxy_pass http://${API_UPSTREAM};
+    access_log off;
+  }
+
+  # Hashed build assets never change.
+  location /assets/ {
+    include /etc/nginx/conf.d/security-headers.inc;
+    add_header Cache-Control "public, max-age=31536000, immutable" always;
+    try_files $uri =404;
+  }
+
+  # The app shell is always revalidated so a deploy is picked up at once.
+  location / {
+    include /etc/nginx/conf.d/security-headers.inc;
+    add_header Cache-Control "no-cache" always;
+    try_files $uri /index.html;
+  }
+}

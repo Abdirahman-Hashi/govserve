@@ -156,6 +156,12 @@ export class PaymentsService {
     idempotencyKey: string | undefined,
     ctx: RequestContext,
   ): Promise<CardCheckout> {
+    if (this.config.CARD_GATEWAY === 'disabled') {
+      throw new ConflictException({
+        code: 'CARD_UNAVAILABLE',
+        message: 'Card payments are not available yet. Pay by mobile money, bank transfer or cash.',
+      });
+    }
     if (!idempotencyKey || !/^[A-Za-z0-9_-]{8,64}$/.test(idempotencyKey)) {
       throw new BadRequestException({
         code: 'IDEMPOTENCY_KEY_REQUIRED',

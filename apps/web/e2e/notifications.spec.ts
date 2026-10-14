@@ -20,7 +20,12 @@ test.describe('notifications', () => {
       .poll(
         async () => {
           await page.reload();
-          return page.getByTestId('unread-badge').isVisible();
+          // The unread count loads after the page: give it a moment before deciding.
+          return page
+            .getByTestId('unread-badge')
+            .waitFor({ timeout: 3_000 })
+            .then(() => true)
+            .catch(() => false);
         },
         { timeout: 30_000, intervals: [2_000] },
       )

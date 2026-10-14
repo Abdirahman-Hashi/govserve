@@ -1,0 +1,276 @@
+# GovServe on one Linux VM (NFR-007, ADR-0011). Every secret comes from the platform secret store:
+# the deploy job exports them as environment variables for this command only, Compose copies them into
+# each container as /run/secrets/<name> (mode 0444, kept in the container's layer under the root-only
+# /var/lib/docker, removed with the container), and the services read *_FILE. They never appear in
+# `docker inspect`, the release directory, an env file or a command line. Use an encrypted VM disk.
+#
+# Compose does not recreate a container when only a secret's value changes, so every service that
+# mounts secrets carries SECRETS_REV (a digest of all secret values, set by infra/deploy/deploy.sh):
+# a rotation recreates exactly those containers on the next deploy.
+#
+#   docker compose -f infra/docker-compose.prod.yml run --rm migrate   # release job, before rollout
+#   docker compose -f infra/docker-compose.prod.yml up -d --wait
+name: govserve-stack
+
+x-restart: &restart
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: { max-size: '20m', max-file: '5' }
+
+x-secrets-rev: &secrets-rev
+  org.govserve.secrets-rev: ${SECRETS_REV:-unset}
+
+services:
+  caddy:
+    <<: *restart
+    image: caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+    ports: ['${HTTP_PORT:-80}:80', '${HTTPS_PORT:-443}:443', '${HTTPS_PORT:-443}:443/udp']
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS, e.g. gov.example.so}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      web: { condition: service_healthy }
+    networks: [edge]
+
+  web:
+    <<: *restart
+    image: ${REGISTRY:-ghcr.io/govserve}/govserve-web:${RELEASE:?set RELEASE to the image tag (commit SHA)}
+    environment:
+      API_UPSTREAM: api:3000
+      OBJECT_STORE_ORIGIN: ${OBJECT_STORE_ORIGIN:?set the public origin of the documents store}
+    read_only: true
+    # Writable scratch for the unprivileged nginx (uid 101): rendered config, cache, temp files.
+    tmpfs:
+      [
+        '/tmp:uid=101,gid=101',
+        '/var/cache/nginx:uid=101,gid=101',
+        '/etc/nginx/conf.d:uid=101,gid=101',
+      ]
+    depends_on:
+      api: { condition: service_healthy }
+    networks: [edge, app]
+    deploy: { resources: { limits: { memory: 128m } } }
+
+  api:
+    <<: *restart
+    image: ${REGISTRY:-ghcr.io/govserve}/govserve-api:${RELEASE}
+    labels: *secrets-rev
+    environment: &api-env
+      NODE_ENV: production
+      DEPLOY_ENV: ${DEPLOY_ENV:?set DEPLOY_ENV to staging or production}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      CORS_ORIGINS: ${WEB_ORIGIN}
+      WEB_ORIGIN: ${WEB_ORIGIN:?set WEB_ORIGIN, e.g. https://gov.example.so}
+      PUBLIC_API_URL: ${WEB_ORIGIN}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      DATABASE_APP_URL_FILE: /run/secrets/database_app_url
+      REDIS_URL_FILE: /run/secrets/redis_url
+      S3_ENDPOINT: ${S3_ENDPOINT:?set S3_ENDPOINT}
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_BUCKET: ${S3_BUCKET:-govserve-documents}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-false}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?set S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY_FILE: /run/secrets/s3_secret_access_key
+      VIRUS_SCANNER: clamav
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: '3310'
+      SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_FROM: ${SMTP_FROM:?set SMTP_FROM}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_REQUIRE_TLS: ${SMTP_REQUIRE_TLS:-true}
+      CARD_GATEWAY: ${CARD_GATEWAY:-disabled}
+      CARD_WEBHOOK_SECRET_FILE: /run/secrets/card_webhook_secret
+      JWT_ACCESS_SECRET_FILE: /run/secrets/jwt_access_secret
+      PII_KEYS_FILE: /run/secrets/pii_keys
+      BLIND_INDEX_KEY_FILE: /run/secrets/blind_index_key
+      SIGNING_KEYS_FILE: /run/secrets/signing_keys
+      METRICS_TOKEN_FILE: /run/secrets/metrics_token
+    secrets:
+      [
+        database_app_url,
+        redis_url,
+        s3_secret_access_key,
+        smtp_password,
+        card_webhook_secret,
+        jwt_access_secret,
+        pii_keys,
+        blind_index_key,
+        signing_keys,
+        metrics_token,
+      ]
+    # Not read_only: Compose writes environment-sourced secrets into the container at start. The app
+    # files are root-owned in the image, so the non-root process still cannot change its own code.
+    tmpfs: [/tmp]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      clamav: { condition: service_healthy }
+    networks: [app]
+    deploy: { resources: { limits: { memory: 1g } } }
+
+  # Release job: never runs with `up`; the deploy runs it before rolling out the new images.
+  migrate:
+    image: ${REGISTRY:-ghcr.io/govserve}/govserve-migrate:${RELEASE}
+    labels: *secrets-rev
+    profiles: [release]
+    environment:
+      DEPLOY_ENV: ${DEPLOY_ENV}
+      DATABASE_URL_FILE: /run/secrets/database_url
+      DATABASE_APP_URL_FILE: /run/secrets/database_app_url
+    secrets: [database_url, database_app_url]
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [app]
+
+  postgres:
+    <<: *restart
+    image: postgres:16.10-alpine@sha256:029660641a0cfc575b14f336ba448fb8a75fd595d42e1fa316b9fb4378742297
+    labels: *secrets-rev
+    environment:
+      POSTGRES_USER: govserve
+      POSTGRES_DB: govserve
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    shm_size: 256m
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U govserve -d govserve']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [app]
+
+  redis:
+    <<: *restart
+    image: redis:7.4.6-alpine@sha256:3b73847e72874be07e6657b129a94761662b79bc0f679273757d4218573b2a98
+    labels: *secrets-rev
+    # The password comes from the secret file; it never appears in the process list.
+    entrypoint: ['sh', '-c']
+    command:
+      - printf 'requirepass %s\nappendonly yes\nappendfsync everysec\ndir /data\n' "$$(cat /run/secrets/redis_password)" > /tmp/redis.conf && exec redis-server /tmp/redis.conf
+    secrets: [redis_password]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'REDISCLI_AUTH="$$(cat /run/secrets/redis_password)" redis-cli ping | grep -q PONG',
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [app]
+
+  clamav:
+    <<: *restart
+    image: clamav/clamav:1.5.4-debian@sha256:9a96980b265cb2b51a20bdcca921dc80aa55ed0e56cdfb076198ee27a9171927
+    volumes: [clamdata:/var/lib/clamav]
+    healthcheck:
+      test: ['CMD', 'clamdcheck.sh']
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 180s
+    networks: [app]
+    deploy: { resources: { limits: { memory: 2g } } }
+
+  # Nightly encrypted backups to the separate backup bucket (infra/backup, RUNBOOK).
+  backup:
+    <<: *restart
+    image: ${REGISTRY:-ghcr.io/govserve}/govserve-backup:${RELEASE}
+    labels: *secrets-rev
+    environment:
+      TZ: Africa/Mogadishu
+      RELEASE: ${RELEASE}
+      BACKUP_AT: ${BACKUP_AT:-01:30}
+      BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:?set the age public key backups are encrypted to}
+      BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:?set the backup bucket endpoint}
+      BACKUP_S3_REGION: ${BACKUP_S3_REGION:-us-east-1}
+      BACKUP_BUCKET: ${BACKUP_BUCKET:?set BACKUP_BUCKET}
+      BACKUP_S3_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY_ID:?set BACKUP_S3_ACCESS_KEY_ID}
+      DOCS_S3_ENDPOINT: ${S3_ENDPOINT}
+      DOCS_S3_REGION: ${S3_REGION:-us-east-1}
+      DOCS_BUCKET: ${S3_BUCKET:-govserve-documents}
+      DOCS_S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+    secrets:
+      [
+        database_url,
+        redis_url,
+        s3_secret_access_key,
+        backup_s3_secret_access_key,
+        backup_crypt_password,
+      ]
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [app]
+
+  prometheus:
+    <<: *restart
+    image: prom/prometheus:v3.6.0@sha256:76947e7ef22f8a698fc638f706685909be425dbe09bd7a2cd7aca849f79b5f64
+    labels: *secrets-rev
+    command: ['--config.file=/etc/prometheus/prometheus.yml', '--storage.tsdb.retention.time=30d']
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - promdata:/prometheus
+    secrets: [metrics_token]
+    networks: [app]
+
+  alertmanager:
+    <<: *restart
+    image: prom/alertmanager:v0.28.1@sha256:27c475db5fb156cab31d5c18a4251ac7ed567746a2483ff264516437a39b15ba
+    labels: *secrets-rev
+    entrypoint: ['/bin/sh', '/etc/alertmanager/render.sh']
+    environment:
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:?set where alerts are emailed}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_FROM: ${SMTP_FROM}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_REQUIRE_TLS: ${SMTP_REQUIRE_TLS:-true}
+      DEPLOY_ENV: ${DEPLOY_ENV}
+    volumes:
+      - ./alertmanager/alertmanager.yml.tmpl:/etc/alertmanager/alertmanager.yml.tmpl:ro
+      - ./alertmanager/render.sh:/etc/alertmanager/render.sh:ro
+      - amdata:/alertmanager
+    secrets: [smtp_password]
+    networks: [app]
+
+networks:
+  edge: {}
+  app: {}
+
+volumes:
+  caddy_data: {}
+  caddy_config: {}
+  pgdata: {}
+  redisdata: {}
+  clamdata: {}
+  promdata: {}
+  amdata: {}
+
+# Sourced from the environment of the deploy session (GitHub Environment secrets); never files.
+secrets:
+  postgres_password: { environment: POSTGRES_PASSWORD }
+  database_url: { environment: DATABASE_URL }
+  database_app_url: { environment: DATABASE_APP_URL }
+  redis_password: { environment: REDIS_PASSWORD }
+  redis_url: { environment: REDIS_URL }
+  s3_secret_access_key: { environment: S3_SECRET_ACCESS_KEY }
+  smtp_password: { environment: SMTP_PASSWORD }
+  card_webhook_secret: { environment: CARD_WEBHOOK_SECRET }
+  jwt_access_secret: { environment: JWT_ACCESS_SECRET }
+  pii_keys: { environment: PII_KEYS }
+  blind_index_key: { environment: BLIND_INDEX_KEY }
+  signing_keys: { environment: SIGNING_KEYS }
+  metrics_token: { environment: METRICS_TOKEN }
+  backup_s3_secret_access_key: { environment: BACKUP_S3_SECRET_ACCESS_KEY }
+  backup_crypt_password: { environment: BACKUP_CRYPT_PASSWORD }

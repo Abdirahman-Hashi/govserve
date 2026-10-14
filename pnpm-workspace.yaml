@@ -17,3 +17,12 @@ allowBuilds:
   '@scarf/scarf': false
   unrs-resolver: true
   argon2: true
+  # BullMQ's msgpackr: native speed-up only; its install script fails in slim images and the
+  # library falls back to plain JavaScript.
+  msgpackr-extract: false
+
+# Security floors for transitive pins the upstream package has not lifted yet (container scan, Phase 11).
+# Prisma CLI 7.10.0 pins both exactly; remove each line once Prisma ships the fixed version.
+overrides:
+  mysql2: 3.24.5 # GHSA-3f6p-5ww8-9rcr; the CLI's MySQL driver, unused with PostgreSQL
+  deepmerge-ts: 8.0.2 # CVE-2026-40345; @prisma/config merges prisma.config.ts with it

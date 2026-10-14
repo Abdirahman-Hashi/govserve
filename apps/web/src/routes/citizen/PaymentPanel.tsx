@@ -208,22 +208,24 @@ export function PaymentPanel({ app }: { app: ApplicationDetail }) {
       <fieldset>
         <legend className="text-sm font-medium">{p.choose}</legend>
         <div className="mt-2 grid gap-2 sm:grid-cols-2">
-          {(['MOBILE_MONEY', 'BANK', 'CARD', 'CASH'] as const).map((c) => (
-            <label
-              key={c}
-              className={`flex items-center gap-2 rounded-md border p-3 ${channel === c ? 'border-brand bg-blue-50' : 'border-slate-300'}`}
-            >
-              <input
-                type="radio"
-                name="channel"
-                value={c}
-                checked={channel === c}
-                onChange={() => setChannel(c)}
-                className="h-5 w-5"
-              />
-              {p.channels[c]}
-            </label>
-          ))}
+          {(['MOBILE_MONEY', 'BANK', 'CARD', 'CASH'] as const)
+            .filter((c) => c !== 'CARD' || app.cardPaymentsEnabled)
+            .map((c) => (
+              <label
+                key={c}
+                className={`flex items-center gap-2 rounded-md border p-3 ${channel === c ? 'border-brand bg-blue-50' : 'border-slate-300'}`}
+              >
+                <input
+                  type="radio"
+                  name="channel"
+                  value={c}
+                  checked={channel === c}
+                  onChange={() => setChannel(c)}
+                  className="h-5 w-5"
+                />
+                {p.channels[c]}
+              </label>
+            ))}
         </div>
       </fieldset>
       {(channel === 'MOBILE_MONEY' || channel === 'BANK') && (

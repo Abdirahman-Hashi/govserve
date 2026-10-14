@@ -1,0 +1,50 @@
+# NFR-012: 5xx rate, payment webhook failures, queue backlog, audit-chain break (RUNBOOK §Alerts).
+groups:
+  - name: govserve
+    rules:
+      - alert: ApiDown
+        expr: up{job="api"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: The API is not answering /metrics
+          runbook: docs/RUNBOOK.md#api-down
+
+      - alert: High5xxRate
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m]))
+            / clamp_min(sum(rate(http_requests_total[5m])), 1e-9) > 0.02
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: More than 2% of API requests are failing with 5xx
+          runbook: docs/RUNBOOK.md#high-5xx-rate
+
+      - alert: PaymentWebhookFailures
+        expr: increase(payment_webhook_failures_total[10m]) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: 'Card webhooks are being rejected or failing ({{ $labels.reason }})'
+          runbook: docs/RUNBOOK.md#payment-webhook-failures
+
+      - alert: QueueBacklog
+        expr: max by (queue) (bullmq_jobs{state="waiting"}) > 200 or max by (queue) (bullmq_oldest_waiting_seconds) > 900
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: 'Jobs are piling up in {{ $labels.queue }}'
+          runbook: docs/RUNBOOK.md#queue-backlog
+
+      - alert: NotificationsDeadLettered
+        expr: increase(notifications_dead_total[1h]) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: Emails failed after every retry (dead-lettered)
+          runbook: docs/RUNBOOK.md#queue-backlog
+
+      - alert: AuditChainBroken
+        expr: audit_chain_ok == 0
+        labels: { severity: critical }
+        annotations:
+          summary: The audit trail verification found a broken link
+          runbook: docs/RUNBOOK.md#audit-chain-broken

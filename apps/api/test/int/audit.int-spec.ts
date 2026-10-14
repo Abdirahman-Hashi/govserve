@@ -8,6 +8,7 @@ import request from 'supertest';
 import { generateKeyPairSync } from 'node:crypto';
 import { AuditVerifierService } from '../../src/audit/audit-verifier.service';
 import { AuditService } from '../../src/audit/audit.service';
+import { MetricsService } from '../../src/metrics/metrics.service';
 import { APP_CONFIG, type AppConfig } from '../../src/config/config.module';
 import { SigningService } from '../../src/receipts/signing.service';
 import { type ErrorEnvelope } from '../../src/common/filters/error-envelope.filter';
@@ -386,6 +387,7 @@ describe('Audit trail and retention (integration)', () => {
       expect(h.mail.last(admin.email, 'AUDIT_CHAIN_BROKEN')?.vars['chainSeq']).toBe(
         target.chainSeq!.toString(),
       );
+      expect((await h.app.get(MetricsService).auditChainOk.get()).values[0]?.value).toBe(0);
       await asSuperuser(
         `UPDATE "audit_log" SET "action" = 'USER_REGISTERED' WHERE "id" = ${target.id}`,
       );

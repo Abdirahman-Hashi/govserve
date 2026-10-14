@@ -1,4 +1,7 @@
 import { Module } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
+import { APP_CONFIG, type AppConfig } from '../config/config.module';
+import { DisabledCardGateway } from './disabled-card-gateway';
 import { ReceiptsService } from '../receipts/receipts.service';
 import { SigningService } from '../receipts/signing.service';
 import { CARD_GATEWAY, ManualOnlyPaymentProvider, PAYMENT_PROVIDER } from './card-gateway.port';
@@ -13,8 +16,13 @@ import { RefundsService } from './refunds.service';
     RefundsService,
     SigningService,
     ReceiptsService,
-    // Only the mock exists until a gateway is chosen; config refuses it in production.
-    { provide: CARD_GATEWAY, useClass: MockCardGateway },
+    // The mock (local, staging) or no card payments at all (production until O-7).
+    {
+      provide: CARD_GATEWAY,
+      inject: [APP_CONFIG, ModuleRef],
+      useFactory: (config: AppConfig, refs: ModuleRef) =>
+        config.CARD_GATEWAY === 'mock' ? refs.create(MockCardGateway) : new DisabledCardGateway(),
+    },
     { provide: PAYMENT_PROVIDER, useClass: ManualOnlyPaymentProvider },
   ],
   exports: [

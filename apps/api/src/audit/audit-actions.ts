@@ -11,11 +11,16 @@ const PATTERNS = [
   /'(APPLICATION_[A-Z_]+|CERTIFICATE_[A-Z_]+|DOCUMENT_[A-Z_]+|SIGNING_KEY_[A-Z_]+)'/g,
 ];
 
+/** The e2e staff fixture (refused in production) audits its own resets; it is not a product action. */
+const NOT_PRODUCT = new Set(['e2e-staff.ts']);
+
 function files(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const path = join(dir, name);
     if (statSync(path).isDirectory()) return name === 'generated' ? [] : files(path);
-    return path.endsWith('.ts') && !path.endsWith('.spec.ts') ? [path] : [];
+    return path.endsWith('.ts') && !path.endsWith('.spec.ts') && !NOT_PRODUCT.has(name)
+      ? [path]
+      : [];
   });
 }
 

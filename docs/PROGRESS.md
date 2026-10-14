@@ -15,7 +15,7 @@ Tick a phase only when lint, typecheck and tests are green and the phase's accep
 | 08 | Search + application/transaction history | 06 | [x] |
 | 09 | Management dashboard | 05, 06 | [x] |
 | 10 | Audit trail hardening + OpenAPI polish | 02–09 | [x] |
-| 11 | Production Docker, CI/CD, cloud deploy | 10 | [ ] |
+| 11 | Production Docker, CI/CD, cloud deploy | 10 | [x] |
 | 12 | Security review, load test, UAT fixes | 11 | [ ] |
 
 ## Notes
@@ -53,3 +53,6 @@ Follow-ups: chart geometry uses `centsForChart` (accepted as display-only, exact
 
 **Phase 10 (2026-10-14):** Tamper-evident audit trail (ADR-0010): an insert trigger chains every row in commit order (advisory lock, `chainSeq`, SHA-256 over a canonical row); `audit_verify()` plus a checkpoint report ROW_CHANGED, LINK_BROKEN or TAIL_REMOVED nightly and on demand, alerting admins; triggers make audit tables append-only, and the API now runs as `govserve_app_rw` (INSERT/SELECT only on audit), integration tests included. Audit coverage table of 91 actions, proven by a code↔doc unit test and an integration teardown that fails unless every action was written (4 gaps fixed, 8 untested paths now tested). Read-only audit viewer for supervisors (own department) and admins, with application history and audited CSV export. Retention jobs (7-year and 90-day file purges with rows kept and 410 on download, unverified accounts, 30-day pruning) are configurable and audited. API docs: contract 1.10.0 with error envelope, auth, examples and query parameters on all 119 operations, guarded by openapi.lock and API_CHANGELOG.
 Follow-ups (Phase 11): create the app login role from the secret store and grant govserve_app_rw; alert routing for dead-lettered emails and verifier failures beyond email; consider per-day chain anchors if audit write volume grows.
+
+**Phase 11 (2026-10-14):** Production delivery on one Linux VM per environment with Docker Compose (ADR-0011): pinned, non-root, health-checked images (api, migrate release job, nginx web with CSP behind Caddy TLS, backup), secrets from GitHub Environments streamed to Compose as `X_FILE` secrets with a digest label so rotations recreate containers, `DEPLOY_ENV` split (production refuses the mock gateway; `CARD_GATEWAY=disabled` hides card payment, API 1.11.0). CI adds format/audit, Trivy gate plus CycloneDX SBOMs and Playwright against the compose stack; deploy.yml builds SHA-tagged GHCR images → staging + smoke → approved production; rollback workflow. Prometheus `/metrics` (bearer token) with six alerts, age-encrypted nightly backups with retention and a verified restore drill, docs/RUNBOOK.md. Fresh clone `make up`, e2e, backup and drill pass locally; CI itself is unconfirmed until pushed.
+Follow-ups: PII re-encryption / blind-index reindex job (key rotation limits); O-7 card gateway and O-8 provider; set GitHub environments, reviewers and branch protection; API image 778 MB.

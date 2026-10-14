@@ -36,6 +36,7 @@ function draft(overrides: Partial<ApplicationDetail> = {}): ApplicationDetail {
     payments: [],
     paidCents: '0',
     balanceCents: '0',
+    cardPaymentsEnabled: true,
     appointments: [],
     certificate: null,
     allowedActions: ['EDIT', 'DELETE'],

@@ -1,0 +1,67 @@
+# `make up`: the production stack built from this checkout, with local stand-ins for the external
+# services (RustFS for S3, Mailpit for SMTP, the mock card gateway) on http://govserve.localhost.
+# Secrets come from infra/.local/stack.env, generated with throwaway values (gitignored).
+services:
+  web:
+    build: { context: .., dockerfile: apps/web/Dockerfile, args: { RELEASE: local } }
+  api:
+    build:
+      { context: .., dockerfile: apps/api/Dockerfile, target: runtime, args: { RELEASE: local } }
+    environment:
+      S3_FORCE_PATH_STYLE: 'true'
+      SMTP_REQUIRE_TLS: 'false'
+      CARD_GATEWAY: mock
+      COOKIE_SECURE: 'false'
+    # The mock gateway calls back through the public URL, i.e. through Caddy on the host.
+    extra_hosts: ['govserve.localhost:host-gateway']
+    depends_on:
+      objectstore-init: { condition: service_completed_successfully }
+  migrate:
+    build: { context: .., dockerfile: apps/api/Dockerfile, target: migrate }
+  backup:
+    build: { context: .., dockerfile: infra/backup/Dockerfile, args: { RELEASE: local } }
+    environment:
+      BACKUP_S3_FORCE_PATH_STYLE: 'true'
+      DOCS_S3_FORCE_PATH_STYLE: 'true'
+    depends_on:
+      objectstore-init: { condition: service_completed_successfully }
+
+  objectstore:
+    image: rustfs/rustfs:1.0.1@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c
+    command: ['server', '--address', ':9000', '/data']
+    environment:
+      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY_ID}
+      RUSTFS_SECRET_KEY: ${S3_SECRET_ACCESS_KEY}
+    ports: ['127.0.0.1:9100:9000'] # browsers upload here with pre-signed PUTs (9000 is the dev stack's)
+    volumes: [localobjects:/data]
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://localhost:9000/health']
+      interval: 5s
+      retries: 20
+    networks: [app]
+  objectstore-init:
+    image: amazon/aws-cli:2.27.50@sha256:48c3d4212e2f5b0e24bdc6af7708f9412ce65425a79575e0f78b8f8c0dcd70ab
+    depends_on:
+      objectstore: { condition: service_healthy }
+    environment:
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - >
+        for b in govserve-documents govserve-backups; do
+        aws --endpoint-url http://objectstore:9000 s3api head-bucket --bucket $$b 2>/dev/null ||
+        aws --endpoint-url http://objectstore:9000 s3api create-bucket --bucket $$b; done &&
+        aws --endpoint-url http://objectstore:9000 s3api put-bucket-cors --bucket govserve-documents
+        --cors-configuration '{"CORSRules":[{"AllowedOrigins":["http://govserve.localhost"],"AllowedMethods":["PUT","GET"],"AllowedHeaders":["*"],"ExposeHeaders":["ETag"],"MaxAgeSeconds":3000}]}'
+    restart: 'no'
+    networks: [app]
+
+  mailpit:
+    image: axllent/mailpit:v1.31.5@sha256:94f6b70c1436defae6799d9ac7ff0eeff9540465b842026d5cdb018f1c0234ea
+    ports: ['127.0.0.1:8125:8025'] # 8025 is the dev stack's Mailpit
+    networks: [app]
+
+volumes:
+  localobjects: {}

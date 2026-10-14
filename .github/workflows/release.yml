@@ -1,0 +1,117 @@
+# Reusable: deploy one release (image tag = commit SHA) to one environment, then smoke-test it.
+# Called by deploy.yml (staging, then production after approval) and rollback.yml.
+name: Release
+
+on:
+  workflow_call:
+    inputs:
+      environment: { type: string, required: true }
+      release: { type: string, required: true }
+      e2e: { type: boolean, default: false }
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ vars.WEB_ORIGIN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.release }}
+
+      - name: SSH key and known host
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Deploy ${{ inputs.release }} to ${{ inputs.environment }}
+        run: infra/deploy/deploy.sh
+        env:
+          RELEASE: ${{ inputs.release }}
+          REGISTRY: ghcr.io/${{ github.repository_owner }}
+          DEPLOY_ENV: ${{ inputs.environment }}
+          SSH_HOST: ${{ vars.SSH_HOST }}
+          SSH_USER: ${{ vars.SSH_USER }}
+          SITE_ADDRESS: ${{ vars.SITE_ADDRESS }}
+          WEB_ORIGIN: ${{ vars.WEB_ORIGIN }}
+          OBJECT_STORE_ORIGIN: ${{ vars.OBJECT_STORE_ORIGIN }}
+          S3_ENDPOINT: ${{ vars.S3_ENDPOINT }}
+          S3_PUBLIC_ENDPOINT: ${{ vars.S3_PUBLIC_ENDPOINT }}
+          S3_REGION: ${{ vars.S3_REGION }}
+          S3_BUCKET: ${{ vars.S3_BUCKET }}
+          S3_FORCE_PATH_STYLE: ${{ vars.S3_FORCE_PATH_STYLE }}
+          S3_ACCESS_KEY_ID: ${{ vars.S3_ACCESS_KEY_ID }}
+          SMTP_HOST: ${{ vars.SMTP_HOST }}
+          SMTP_PORT: ${{ vars.SMTP_PORT }}
+          SMTP_FROM: ${{ vars.SMTP_FROM }}
+          SMTP_USER: ${{ vars.SMTP_USER }}
+          SMTP_SECURE: ${{ vars.SMTP_SECURE }}
+          SMTP_REQUIRE_TLS: ${{ vars.SMTP_REQUIRE_TLS }}
+          CARD_GATEWAY: ${{ vars.CARD_GATEWAY }}
+          ALERT_EMAIL_TO: ${{ vars.ALERT_EMAIL_TO }}
+          BACKUP_AGE_RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+          BACKUP_S3_ENDPOINT: ${{ vars.BACKUP_S3_ENDPOINT }}
+          BACKUP_S3_REGION: ${{ vars.BACKUP_S3_REGION }}
+          BACKUP_BUCKET: ${{ vars.BACKUP_BUCKET }}
+          BACKUP_S3_ACCESS_KEY_ID: ${{ vars.BACKUP_S3_ACCESS_KEY_ID }}
+          LOG_LEVEL: ${{ vars.LOG_LEVEL }}
+          GHCR_USER: ${{ vars.GHCR_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_APP_URL: ${{ secrets.DATABASE_APP_URL }}
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          CARD_WEBHOOK_SECRET: ${{ secrets.CARD_WEBHOOK_SECRET }}
+          JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET }}
+          PII_KEYS: ${{ secrets.PII_KEYS }}
+          BLIND_INDEX_KEY: ${{ secrets.BLIND_INDEX_KEY }}
+          SIGNING_KEYS: ${{ secrets.SIGNING_KEYS }}
+          METRICS_TOKEN: ${{ secrets.METRICS_TOKEN }}
+          BACKUP_S3_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+          BACKUP_CRYPT_PASSWORD: ${{ secrets.BACKUP_CRYPT_PASSWORD }}
+          GHCR_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
+
+      - name: Smoke test
+        env:
+          BASE: ${{ vars.WEB_ORIGIN }}
+          RELEASE: ${{ inputs.release }}
+        run: infra/deploy/smoke.sh "$BASE" "$RELEASE"
+
+  # Staging only: read-only Playwright journeys (no staff accounts) against the deployed site.
+  e2e:
+    needs: deploy
+    if: inputs.e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.release }}
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter web exec playwright install --with-deps chromium
+
+      - name: Smoke journeys
+        run: pnpm --filter web exec playwright test e2e/home.spec.ts e2e/catalogue.spec.ts
+        env:
+          E2E_BASE_URL: ${{ vars.WEB_ORIGIN }}

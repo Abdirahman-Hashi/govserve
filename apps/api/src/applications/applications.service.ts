@@ -21,6 +21,7 @@ import {
   validateFormData,
 } from '@govserve/shared';
 import { AuditService, SYSTEM_ACTOR } from '../audit/audit.service';
+import { APP_CONFIG, type AppConfig } from '../config/config.module';
 import { type AuthUser } from '../auth/auth.types';
 import { assertCitizenOwns } from '../common/guards/scope';
 import { type RequestContext } from '../common/request-context';
@@ -120,6 +121,7 @@ export class ApplicationsService {
     private readonly refunds: RefundsService,
     private readonly settings: ConfigAdminService,
     private readonly audit: AuditService,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
   // ─── A1: create a draft ─────────────────────────────────────────────────────
@@ -620,6 +622,7 @@ export class ApplicationsService {
             expiresAt: app.certificates[0].expiresAt?.toISOString() ?? null,
           }
         : null,
+      cardPaymentsEnabled: this.config.CARD_GATEWAY !== 'disabled',
       allowedActions: allowedActions(this.state, app, user),
       editableFields: edit.fields,
       editableDocTypes: edit.docTypes,

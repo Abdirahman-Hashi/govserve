@@ -1,0 +1,46 @@
+# Restore drill against a throwaway database (make restore-drill). Never points at production.
+name: govserve-drill
+services:
+  drill-postgres:
+    image: postgres:16.10-alpine@sha256:029660641a0cfc575b14f336ba448fb8a75fd595d42e1fa316b9fb4378742297
+    environment: { POSTGRES_USER: drill, POSTGRES_PASSWORD: drill, POSTGRES_DB: drill }
+    tmpfs: [/var/lib/postgresql/data]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U drill -d drill']
+      interval: 2s
+      retries: 30
+  drill:
+    image: ${REGISTRY:-govserve}/govserve-backup:${RELEASE:-local}
+    entrypoint: ['/backup/restore.sh']
+    environment:
+      DRILL_DATABASE_URL: postgresql://drill:drill@drill-postgres:5432/drill
+      BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT}
+      BACKUP_S3_REGION: ${BACKUP_S3_REGION:-us-east-1}
+      BACKUP_S3_FORCE_PATH_STYLE: ${BACKUP_S3_FORCE_PATH_STYLE:-false}
+      BACKUP_BUCKET: ${BACKUP_BUCKET}
+      BACKUP_S3_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY_ID}
+      DOCS_S3_ENDPOINT: ${DOCS_S3_ENDPOINT:-${S3_ENDPOINT}}
+      DOCS_S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      DOCS_S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-false}
+      DOCS_BUCKET: ${S3_BUCKET:-govserve-documents}
+      RESTORE_DAY: ${RESTORE_DAY:-}
+    secrets:
+      [
+        backup_s3_secret_access_key,
+        backup_crypt_password,
+        backup_age_identity,
+        s3_secret_access_key,
+      ]
+    networks: [default, ext]
+    depends_on:
+      drill-postgres: { condition: service_healthy }
+networks:
+  # Reach the object store of the stack being drilled (the local stack's network by default).
+  ext:
+    external: true
+    name: ${DRILL_EXTERNAL_NETWORK:-govserve-stack_app}
+secrets:
+  backup_s3_secret_access_key: { environment: BACKUP_S3_SECRET_ACCESS_KEY }
+  backup_crypt_password: { environment: BACKUP_CRYPT_PASSWORD }
+  s3_secret_access_key: { environment: S3_SECRET_ACCESS_KEY }
+  backup_age_identity: { environment: BACKUP_AGE_IDENTITY }

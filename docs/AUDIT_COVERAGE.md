@@ -10,6 +10,8 @@ This table is checked automatically:
 
 Not audited, by design: notification delivery bookkeeping (the notification row is its own log), outbox dispatch markers,
 autosaves of a citizen's own draft, read-only views other than PII unmask and document or certificate downloads.
+The e2e staff fixture (`src/cli/e2e-staff.ts`, refused when `DEPLOY_ENV=production`) writes `E2E_STAFF_PASSWORD_RESET`
+for its own resets; it is a test tool, so it is not listed.
 
 **91 actions, 100% covered.**
 

@@ -81,9 +81,16 @@ export interface Harness {
   close(): Promise<void>;
 }
 
-export async function startHarness(opts: { rateLimit?: boolean } = {}): Promise<Harness> {
+export async function startHarness(
+  opts: { rateLimit?: boolean; env?: Record<string, string> } = {},
+): Promise<Harness> {
   const infra = await startTestInfra();
-  Object.assign(process.env, testEnv(infra), opts.rateLimit ? { RATE_LIMIT_ENABLED: 'true' } : {});
+  Object.assign(
+    process.env,
+    testEnv(infra),
+    opts.rateLimit ? { RATE_LIMIT_ENABLED: 'true' } : {},
+    opts.env ?? {},
+  );
   const mail = new InMemoryNotificationAdapter();
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(NOTIFICATION_PORT)

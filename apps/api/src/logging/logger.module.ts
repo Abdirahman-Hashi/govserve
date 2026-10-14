@@ -39,6 +39,8 @@ export const LoggerModule = PinoLoggerModule.forRootAsync({
   useFactory: (config: AppConfig) => ({
     pinoHttp: {
       level: config.LOG_LEVEL,
+      // Every line says which release and deployment wrote it.
+      base: { release: config.APP_VERSION, env: config.DEPLOY_ENV },
       genReqId: requestId,
       redact: { paths: REDACT_PATHS, censor: '[REDACTED]' },
       // Log only what is needed to trace a request; headers and query strings can carry PII.
@@ -50,7 +52,11 @@ export const LoggerModule = PinoLoggerModule.forRootAsync({
         }),
         res: (res: { statusCode: number }) => ({ statusCode: res.statusCode }),
       },
-      autoLogging: { ignore: (req: IncomingMessage) => req.url === '/health' },
+      // Probes and scrapes would drown the log.
+      autoLogging: {
+        ignore: (req: IncomingMessage) =>
+          req.url === '/health' || req.url === '/ready' || req.url === '/metrics',
+      },
       transport:
         config.NODE_ENV === 'development'
           ? { target: 'pino-pretty', options: { singleLine: true } }

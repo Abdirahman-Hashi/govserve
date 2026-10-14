@@ -13,8 +13,8 @@
     "openapi:lock": "prisma generate >/dev/null && ts-node --swc scripts/openapi-lock.ts",
     "openapi:export": "prisma generate && ts-node --swc scripts/export-openapi.ts",
     "db:app-role": "ts-node --swc scripts/db-app-role.ts",
-    "e2e:staff": "ts-node --swc scripts/e2e-staff.ts",
-    "admin:bootstrap": "prisma generate >/dev/null && ts-node --swc scripts/bootstrap-admin.ts",
+    "e2e:staff": "ts-node --swc src/cli/e2e-staff.ts",
+    "admin:bootstrap": "prisma generate >/dev/null && ts-node --swc src/cli/bootstrap-admin.ts",
     "permissions:matrix": "prisma generate >/dev/null && ts-node --swc scripts/permissions-matrix.ts",
     "db:seed": "prisma generate >/dev/null && ts-node --swc prisma/seed.ts"
   },
@@ -72,6 +72,7 @@
     "pg": "^8.23.1",
     "pino": "^10.4.0",
     "pino-http": "^11.0.0",
+    "prom-client": "15.1.3",
     "qrcode": "1.5.4",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",

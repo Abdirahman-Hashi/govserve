@@ -1,0 +1,72 @@
+# main → images tagged by commit SHA → staging → smoke → (manual approval) → production → smoke.
+# Production approval comes from the "production" environment's required reviewers (RUNBOOK §Deploy).
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        image:
+          - { name: api, file: apps/api/Dockerfile, target: runtime }
+          - { name: migrate, file: apps/api/Dockerfile, target: migrate }
+          - { name: web, file: apps/web/Dockerfile, target: runtime }
+          - { name: backup, file: infra/backup/Dockerfile, target: '' }
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push govserve-${{ matrix.image.name }}:${{ github.sha }}
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          file: ${{ matrix.image.file }}
+          target: ${{ matrix.image.target }}
+          build-args: RELEASE=${{ github.sha }}
+          push: true
+          provenance: true
+          sbom: true
+          tags: ghcr.io/${{ github.repository_owner }}/govserve-${{ matrix.image.name }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.image.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}
+
+  staging:
+    needs: build
+    uses: ./.github/workflows/release.yml
+    with:
+      environment: staging
+      release: ${{ github.sha }}
+      e2e: true
+    secrets: inherit
+
+  production:
+    needs: staging
+    uses: ./.github/workflows/release.yml
+    with:
+      environment: production
+      release: ${{ github.sha }}
+      e2e: false
+    secrets: inherit

@@ -1,0 +1,18 @@
+# Build context is the repo root; keep it small and free of secrets.
+**/node_modules
+**/dist
+**/.turbo
+**/coverage
+**/test-results
+**/playwright-report
+**/openapi.json
+.git
+.github
+.claude
+.env
+.env.*
+!.env.example
+infra/.local
+docs
+*.log
+.DS_Store

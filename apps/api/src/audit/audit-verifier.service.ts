@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { type AuditVerification } from '@govserve/shared';
+import { MetricsService } from '../metrics/metrics.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -11,7 +12,10 @@ import { PrismaService } from '../prisma/prisma.service';
 export class AuditVerifierService {
   private readonly logger = new Logger(AuditVerifierService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly metrics: MetricsService,
+  ) {}
 
   async verify(): Promise<AuditVerification> {
     const verifiedAt = new Date();
@@ -63,6 +67,7 @@ export class AuditVerifierService {
         });
       }
     }
+    this.metrics.auditChainOk.set(broken ? 0 : 1);
     return { ok: !broken, rows, verifiedAt: verifiedAt.toISOString(), broken };
   }
 }

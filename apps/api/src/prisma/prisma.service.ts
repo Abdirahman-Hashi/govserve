@@ -8,7 +8,9 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
   constructor(@Inject(APP_CONFIG) config: AppConfig) {
     // The restricted application role when configured (always in production), else the owner.
     super({
-      adapter: new PrismaPg({ connectionString: config.DATABASE_APP_URL ?? config.DATABASE_URL }),
+      adapter: new PrismaPg({
+        connectionString: (config.DATABASE_APP_URL ?? config.DATABASE_URL)!,
+      }),
     });
   }
 

@@ -9,7 +9,8 @@ import { AuditVerifierService } from '../audit/audit-verifier.service';
 import { PurgeService } from './purge.service';
 import { RetentionService } from './retention.service';
 
-export const MAINTENANCE_QUEUE = 'maintenance';
+export { MAINTENANCE_QUEUE } from '../common/queue-names';
+import { MAINTENANCE_QUEUE } from '../common/queue-names';
 export const PURGE_JOB = 'purge-auth';
 export const RECONCILE_CARD_JOB = 'reconcile-card';
 export const ABANDON_UNPAID_JOB = 'abandon-unpaid';

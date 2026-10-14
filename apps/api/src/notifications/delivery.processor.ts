@@ -4,6 +4,7 @@ import { linkFor, type NotificationVars } from '@govserve/shared';
 import { type Job, Queue, UnrecoverableError } from 'bullmq';
 import { firstName } from '../auth/session-user';
 import { APP_CONFIG, type AppConfig } from '../config/config.module';
+import { MetricsService } from '../metrics/metrics.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationDeliveryError } from './notification-delivery.error';
 import {
@@ -35,6 +36,7 @@ export class DeliveryProcessor extends WorkerHost {
     @Inject(NOTIFICATION_PORT) private readonly port: NotificationPort,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @InjectQueue(NOTIFY_DEAD_QUEUE) private readonly dead: Queue,
+    private readonly metrics: MetricsService,
   ) {
     super();
   }
@@ -109,6 +111,7 @@ export class DeliveryProcessor extends WorkerHost {
       where: { id: job.data.notificationId, status: { not: 'SENT' } },
       data: { status: 'DEAD' },
     });
+    this.metrics.notificationsDead.inc();
     await this.dead.add(
       'dead',
       { notificationId: job.data.notificationId, reason: err.message },

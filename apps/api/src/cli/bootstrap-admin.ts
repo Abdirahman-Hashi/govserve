@@ -4,19 +4,20 @@ import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { NestFactory } from '@nestjs/core';
 import { InviteStaffRequestSchema } from '@govserve/shared';
-import { AppModule } from '../src/app.module';
-import { SYSTEM_ACTOR } from '../src/audit/audit.service';
-import { PrismaService } from '../src/prisma/prisma.service';
-import { StaffService } from '../src/users/staff.service';
+import { AppModule } from '../app.module';
+import { SYSTEM_ACTOR } from '../audit/audit.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { StaffService } from '../users/staff.service';
 
 /**
  * Creates the first admin invitation (FR-007: staff are only ever created by invitation).
  * Usage: pnpm --filter api admin:bootstrap --email admin@bra.gov.so --name "Full Name"
+ * On the VM: docker exec -it govserve-stack-api-1 node dist/cli/bootstrap-admin.js --email ... --name ...
  * Refuses to run once any admin exists; later admins are invited from the admin UI.
  */
 async function main(): Promise<void> {
   // Local runs read the repo-root .env; deployed environments provide real variables.
-  const envFile = resolve(__dirname, '../../../.env');
+  const envFile = resolve(__dirname, '../../../../.env');
   if (existsSync(envFile)) process.loadEnvFile(envFile);
   const { values } = parseArgs({
     options: { email: { type: 'string' }, name: { type: 'string' } },

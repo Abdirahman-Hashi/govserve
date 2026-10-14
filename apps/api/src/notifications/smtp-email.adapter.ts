@@ -26,7 +26,12 @@ export class SmtpEmailAdapter implements NotificationPort, OnModuleDestroy {
       createTransport({
         host: config.SMTP_HOST,
         port: config.SMTP_PORT,
-        secure: false,
+        secure: config.SMTP_SECURE,
+        requireTLS: config.SMTP_REQUIRE_TLS,
+        ...(config.SMTP_USER &&
+          config.SMTP_PASSWORD && {
+            auth: { user: config.SMTP_USER, pass: config.SMTP_PASSWORD },
+          }),
       });
   }
 

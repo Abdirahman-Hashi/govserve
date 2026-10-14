@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { loadEnv } from './env';
 
 const valid = {
@@ -65,10 +68,8 @@ describe('loadEnv', () => {
     ).toBe('noop');
   });
 
-  it('should refuse the mock card gateway in production', () => {
-    expect(() => loadEnv({ ...valid, NODE_ENV: 'production', VIRUS_SCANNER: 'clamav' })).toThrow(
-      /CARD_GATEWAY/,
-    );
+  it('should refuse the mock card gateway in the production deployment', () => {
+    expect(() => loadEnv({ ...valid, DEPLOY_ENV: 'production' })).toThrow(/CARD_GATEWAY/);
   });
 
   it('should reject a short JWT secret', () => {
@@ -77,5 +78,75 @@ describe('loadEnv', () => {
 
   it('should reject a non-postgres DATABASE_URL', () => {
     expect(() => loadEnv({ ...valid, DATABASE_URL: 'mysql://u:p@h/db' })).toThrow(/DATABASE_URL/);
+  });
+
+  describe('deployments (Phase 11)', () => {
+    const prod = {
+      ...valid,
+      NODE_ENV: 'production',
+      DEPLOY_ENV: 'staging',
+      DATABASE_APP_URL: 'postgresql://govserve_app:pw@db:5432/govserve',
+      METRICS_TOKEN: 'm'.repeat(32),
+    };
+
+    it('should run without the owner credentials when the app role is configured', () => {
+      const { DATABASE_URL: _owner, ...noOwner } = prod;
+      expect(loadEnv(noOwner).DATABASE_URL).toBeUndefined();
+      expect(() => loadEnv({ ...noOwner, DATABASE_APP_URL: undefined })).toThrow(
+        /DATABASE_APP_URL/,
+      );
+    });
+
+    it('should require DEPLOY_ENV, an app role and a metrics token for production builds', () => {
+      expect(() => loadEnv({ ...prod, DEPLOY_ENV: undefined })).toThrow(/DEPLOY_ENV/);
+      expect(() => loadEnv({ ...prod, DATABASE_APP_URL: undefined })).toThrow(/DATABASE_APP_URL/);
+      expect(() => loadEnv({ ...prod, METRICS_TOKEN: undefined })).toThrow(/METRICS_TOKEN/);
+      expect(loadEnv(prod).DEPLOY_ENV).toBe('staging');
+    });
+
+    it('should allow the mock gateway on staging but not in production', () => {
+      expect(loadEnv(prod).CARD_GATEWAY).toBe('mock');
+      expect(() => loadEnv({ ...prod, DEPLOY_ENV: 'production' })).toThrow(/CARD_GATEWAY/);
+      expect(
+        loadEnv({ ...prod, DEPLOY_ENV: 'production', CARD_GATEWAY: 'disabled' }).CARD_GATEWAY,
+      ).toBe('disabled');
+    });
+
+    it('should read secrets from *_FILE without echoing them', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'env-'));
+      const file = join(dir, 'webhook');
+      writeFileSync(file, `${'s'.repeat(40)}\n`);
+      const { CARD_WEBHOOK_SECRET: _drop, ...rest } = valid;
+      expect(loadEnv({ ...rest, CARD_WEBHOOK_SECRET_FILE: file }).CARD_WEBHOOK_SECRET).toBe(
+        's'.repeat(40),
+      );
+      // No file means unset: the required variable is reported by its own name.
+      expect(() => loadEnv({ ...rest, CARD_WEBHOOK_SECRET_FILE: join(dir, 'missing') })).toThrow(
+        /CARD_WEBHOOK_SECRET/,
+      );
+      rmSync(dir, { recursive: true });
+    });
+
+    it('should treat empty values and empty secret files as unset', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'env-'));
+      writeFileSync(join(dir, 'pw'), '');
+      const env = loadEnv({
+        ...valid,
+        SMTP_USER: '',
+        SMTP_PASSWORD_FILE: join(dir, 'pw'),
+        S3_PUBLIC_ENDPOINT: '',
+      });
+      expect([env.SMTP_USER, env.SMTP_PASSWORD, env.S3_PUBLIC_ENDPOINT]).toEqual([
+        undefined,
+        undefined,
+        undefined,
+      ]);
+      rmSync(dir, { recursive: true });
+    });
+
+    it('should need both SMTP credentials or neither', () => {
+      expect(() => loadEnv({ ...valid, SMTP_USER: 'relay' })).toThrow(/SMTP_USER/);
+      expect(loadEnv({ ...valid, SMTP_USER: 'relay', SMTP_PASSWORD: 'x' }).SMTP_USER).toBe('relay');
+    });
   });
 });

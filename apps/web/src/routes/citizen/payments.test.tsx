@@ -57,6 +57,7 @@ const awaiting = {
   payments: [],
   paidCents: '0',
   balanceCents: '1900',
+  cardPaymentsEnabled: true,
   appointments: [],
   certificate: null,
   allowedActions: ['WITHDRAW'],
@@ -121,6 +122,24 @@ describe('citizen payment panel', () => {
     await userEvent.click(screen.getByRole('button', { name: t.payments.submit }));
     expect(screen.getByText(t.payments.invalidAmount)).toBeInTheDocument();
     expect(calls.some((c) => c.key.endsWith('/payments'))).toBe(false);
+  });
+
+  it.each([
+    ['offer', true, 4],
+    ['hide', false, 3],
+  ])('should %s the card option when card payments enabled is %s', async (_, enabled, options) => {
+    mockApi({
+      'POST /api/v1/auth/refresh': () => ({ status: 200, body: sessionFor('CITIZEN') }),
+      [`GET /api/v1/applications/${ID}`]: () => ({
+        status: 200,
+        body: { ...awaiting, cardPaymentsEnabled: enabled },
+      }),
+    });
+    renderRoute(`/citizen/applications/${ID}`);
+    await screen.findByTestId('balance');
+    expect(screen.getAllByRole('radio')).toHaveLength(options);
+    const card = screen.queryByRole('radio', { name: t.payments.channels.CARD });
+    expect(card !== null).toBe(enabled);
   });
 });
 

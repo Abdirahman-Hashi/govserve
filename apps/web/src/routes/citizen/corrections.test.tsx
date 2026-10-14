@@ -38,6 +38,7 @@ const detail = (overrides: object = {}) => ({
   payments: [],
   paidCents: '1000',
   balanceCents: '0',
+  cardPaymentsEnabled: true,
   appointments: [],
   certificate: null,
   allowedActions: ['EDIT', 'RESUBMIT', 'WITHDRAW'],

@@ -133,6 +133,8 @@ export const ApplicationDetailSchema = ApplicationSummarySchema.extend({
   /** Sum of CONFIRMED payments and what is still owed (cents as strings; '0' before assessment). */
   paidCents: z.string(),
   balanceCents: z.string(),
+  /** Card checkout is offered only when a card gateway is configured (O-7). */
+  cardPaymentsEnabled: z.boolean(),
   /** In-person appointments (scheduled ones show time and place). */
   appointments: z.array(
     z.object({

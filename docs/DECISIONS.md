@@ -141,3 +141,23 @@ Settled in the Phase 0 interview. Details are in docs/SPEC.md, docs/SERVICES.md 
 - **Gaps closed by the review:** signing-key registration and rotation, seeded settings and reason codes, auth-artifact
   pruning, and idle-draft document purges are now audited. Signing keys are no longer rewritten on every boot.
 
+
+## Phase 11 decisions (2026-10-14)
+- **Hosting (O-8, default until decided):** one Linux VM per environment (staging, production) with Docker Compose;
+  images in GHCR tagged by commit SHA; GitHub Environment secrets streamed to the VM at deploy time (ADR-0011).
+- **Pipeline:** a push to main builds once, deploys to staging, smoke-tests (script plus Playwright), then waits for a
+  production reviewer. Rollback is a manual workflow that redeploys an earlier SHA; migrations stay forward-only and
+  additive so this is safe.
+- **`DEPLOY_ENV`** separates where code runs from how it is built: staging may use the mock card gateway, production
+  may not. Production runs `CARD_GATEWAY=disabled` until O-7, and the web app hides card payment
+  (`cardPaymentsEnabled`, API 1.11.0).
+- **Configuration from files:** every variable `X` can come from `X_FILE`. Production requires `DATABASE_APP_URL`
+  and `METRICS_TOKEN`; `DATABASE_URL` is needed only by the release job and backups.
+- **Edge and headers:** Caddy (TLS, HSTS) in front of nginx (CSP, security headers); `/metrics` is internal only, behind
+  a bearer token.
+- **Backups:** daily, `age`-encrypted (private key offline with two custodians), documents through rclone crypt, in a
+  separate bucket; 14 daily / 8 weekly / 12 monthly; monthly restore drill.
+- **Alerts** by email from Prometheus/Alertmanager on the VM; each rule links to its RUNBOOK section.
+- **Supply chain:** pinned image digests plus OS security upgrades at build; npm removed from runtime images; pnpm
+  overrides lift `mysql2` and `deepmerge-ts` (pinned by Prisma 7.10.0) to fixed versions until Prisma does.
+- **First admin in production:** `node dist/cli/bootstrap-admin.js` inside the API container (moved from `scripts/`).

@@ -3,12 +3,12 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { NestFactory } from '@nestjs/core';
 import { PasswordSchema } from '@govserve/shared';
-import { AppModule } from '../src/app.module';
-import { AuditService, SYSTEM_ACTOR } from '../src/audit/audit.service';
-import { AuthService } from '../src/auth/auth.service';
-import { PasswordService } from '../src/auth/password.service';
-import { PrismaService } from '../src/prisma/prisma.service';
-import { StaffService } from '../src/users/staff.service';
+import { AppModule } from '../app.module';
+import { AuditService, SYSTEM_ACTOR } from '../audit/audit.service';
+import { AuthService } from '../auth/auth.service';
+import { PasswordService } from '../auth/password.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { StaffService } from '../users/staff.service';
 
 /** Staff accounts the Playwright flows sign in with (address office, plus an admin). */
 export const E2E_STAFF = [
@@ -19,12 +19,14 @@ export const E2E_STAFF = [
 
 /**
  * Creates (or resets the password of) the e2e staff accounts. Never runs in production.
- * Usage: E2E_STAFF_PASSWORD=... pnpm --filter api e2e:staff
+ * Usage: E2E_STAFF_PASSWORD=... pnpm --filter api e2e:staff (or, in a built image,
+ * `node dist/cli/e2e-staff.js`, which `make e2e` runs inside the local stack's api container).
  */
 async function main(): Promise<void> {
-  const envFile = resolve(__dirname, '../../../.env');
+  const envFile = resolve(__dirname, '../../../../.env');
   if (existsSync(envFile)) process.loadEnvFile(envFile);
-  if (process.env['NODE_ENV'] === 'production') {
+  // Staging runs production builds, so the guard is the deployment, not NODE_ENV.
+  if (process.env['DEPLOY_ENV'] === 'production') {
     process.stderr.write('Refusing to create e2e staff accounts in production.\n');
     process.exitCode = 1;
     return;

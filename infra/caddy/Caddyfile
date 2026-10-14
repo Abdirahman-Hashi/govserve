@@ -1,0 +1,24 @@
+# Edge: TLS (automatic certificates for a public domain), HSTS, and the only published ports.
+{
+	admin off
+	servers {
+		# Trust X-Forwarded-For only from Docker's private ranges.
+		trusted_proxies static private_ranges
+	}
+}
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+	# Prometheus scrapes the API directly on the internal network; never from outside.
+	@internal path /metrics /metrics/*
+	respond @internal 404
+	reverse_proxy web:8080
+	log {
+		output stdout
+		format json
+	}
+}
