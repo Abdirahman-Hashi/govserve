@@ -6,7 +6,7 @@
     "build": "prisma generate && nest build",
     "dev": "prisma generate && nest start --watch --exec \"node --env-file-if-exists=../../.env\"",
     "start": "node --enable-source-maps dist/main.js",
-    "lint": "eslint src test scripts",
+    "lint": "prisma generate && eslint src test scripts",
     "typecheck": "prisma generate && tsc --noEmit",
     "test": "jest",
     "test:int": "prisma generate && jest --config jest.int.config.ts --runInBand",

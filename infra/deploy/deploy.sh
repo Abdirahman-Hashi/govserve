@@ -7,6 +7,8 @@
 # the release directory or an env file, put on a command line, or printed.
 set -euo pipefail
 : "${RELEASE:?}" "${SSH_HOST:?}" "${SSH_USER:?}" "${REGISTRY:?}" "${DEPLOY_ENV:?}"
+# Image names must be lowercase; GitHub owners (ghcr.io/<owner>) often are not.
+REGISTRY="$(printf '%s' "$REGISTRY" | tr '[:upper:]' '[:lower:]')"
 ROOT=/opt/govserve
 here="$(cd "$(dirname "$0")/.." && pwd)" # infra/
 
