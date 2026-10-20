@@ -15,6 +15,7 @@ import {
   type RegisterRequest,
   type ResetPasswordRequest,
 } from '@govserve/shared';
+import { Prisma } from '../generated/prisma/client';
 import { AuditService, PUBLIC_ACTOR, SYSTEM_ACTOR, type AuditActor } from '../audit/audit.service';
 import { type RequestContext } from '../common/request-context';
 import { CryptoService } from '../crypto/crypto.service';
@@ -73,35 +74,42 @@ export class AuthService {
     this.passwords.assertAcceptable(body.password, body);
     const passwordHash = await this.passwords.hash(body.password);
 
-    const message = await this.prisma.$transaction(async (tx) => {
-      const existing = await tx.user.findUnique({ where: { email: body.email } });
-      if (existing) return null;
-      const user = await tx.user.create({
-        data: {
-          email: body.email,
-          fullName: body.fullName,
-          passwordHash,
-          role: 'CITIZEN',
-          phoneEnc: this.crypto.encrypt(body.phone),
-          phoneBidx: this.crypto.blindIndex('phone', body.phone),
-          citizenProfile: { create: {} },
-        },
+    const message = await this.prisma
+      .$transaction(async (tx) => {
+        const existing = await tx.user.findUnique({ where: { email: body.email } });
+        if (existing) return null;
+        const user = await tx.user.create({
+          data: {
+            email: body.email,
+            fullName: body.fullName,
+            passwordHash,
+            role: 'CITIZEN',
+            phoneEnc: this.crypto.encrypt(body.phone),
+            phoneBidx: this.crypto.blindIndex('phone', body.phone),
+            citizenProfile: { create: {} },
+          },
+        });
+        await this.audit.record(tx, {
+          actor: actorOf(user),
+          action: 'USER_REGISTERED',
+          entityType: 'User',
+          entityId: user.id,
+          after: { role: 'CITIZEN' },
+          ctx,
+        });
+        const { code } = await this.otp.issue(tx, {
+          email: user.email,
+          purpose: 'VERIFY_EMAIL',
+          userId: user.id,
+        });
+        return this.codeMessage(user.email, 'VERIFY_EMAIL_CODE', user.fullName, code);
+      })
+      .catch((err: unknown) => {
+        // A concurrent registration of the same email won the race: answer as for an existing account.
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002')
+          return null;
+        throw err;
       });
-      await this.audit.record(tx, {
-        actor: actorOf(user),
-        action: 'USER_REGISTERED',
-        entityType: 'User',
-        entityId: user.id,
-        after: { role: 'CITIZEN' },
-        ctx,
-      });
-      const { code } = await this.otp.issue(tx, {
-        email: user.email,
-        purpose: 'VERIFY_EMAIL',
-        userId: user.id,
-      });
-      return this.codeMessage(user.email, 'VERIFY_EMAIL_CODE', user.fullName, code);
-    });
     if (message) await this.send(message);
   }
 

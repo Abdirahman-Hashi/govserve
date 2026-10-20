@@ -22,12 +22,22 @@ export const EnvSchema = z.object({
     ),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(100),
+  // Ceiling per client IP across all routes, sized for many users behind one carrier NAT.
+  RATE_LIMIT_PER_IP_PER_MINUTE: z.coerce.number().int().positive().default(1200),
+  // Reverse proxies in front of the API whose X-Forwarded-For is trusted (Caddy → nginx = 2). With
+  // 0, the client IP is the socket peer: right for the dev server, wrong behind the proxies, where
+  // every request would share nginx's IP (rate limits and audit IPs). Production builds need ≥ 1.
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
   // Disable only in automated tests that exercise many auth calls from one IP.
   RATE_LIMIT_ENABLED: booleanString.default(true),
   // The owner, used by migrations. Deployed API containers do not get it (ADR-0010): they connect
   // with DATABASE_APP_URL as a member of govserve_app_rw (INSERT/SELECT only on audit tables).
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }).optional(),
   DATABASE_APP_URL: z.url({ protocol: /^postgres(ql)?$/ }).optional(),
+  // Connections per API process (the pg driver's default, 10). Raising it did not help write bursts
+  // in the load test, which queue on the audit chain instead (docs/perf/load-test.md). Keep well
+  // under Postgres max_connections (100) across the API, jobs and backups.
+  DATABASE_POOL_MAX: z.coerce.number().int().min(2).max(80).default(10),
   REDIS_URL: z.url({ protocol: /^rediss?$/ }),
   S3_ENDPOINT: z.url(),
   S3_REGION: z.string().min(1),
@@ -141,6 +151,14 @@ function crossCheck(env: Env): string[] {
     problems.push(
       '  - CARD_GATEWAY: the mock gateway cannot run in production (use "disabled" until O-7)',
     );
+  }
+  if (env.NODE_ENV === 'production' && env.TRUST_PROXY_HOPS === 0) {
+    problems.push(
+      '  - TRUST_PROXY_HOPS: production builds run behind the proxies; set it (2 for Caddy → nginx)',
+    );
+  }
+  if (env.DEPLOY_ENV === 'production' && !env.RATE_LIMIT_ENABLED) {
+    problems.push('  - RATE_LIMIT_ENABLED: rate limiting cannot be turned off in production');
   }
   if (Boolean(env.SMTP_USER) !== Boolean(env.SMTP_PASSWORD)) {
     problems.push('  - SMTP_USER / SMTP_PASSWORD: set both or neither');

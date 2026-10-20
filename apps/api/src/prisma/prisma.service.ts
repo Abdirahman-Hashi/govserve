@@ -10,6 +10,7 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
     super({
       adapter: new PrismaPg({
         connectionString: (config.DATABASE_APP_URL ?? config.DATABASE_URL)!,
+        max: config.DATABASE_POOL_MAX,
       }),
     });
   }

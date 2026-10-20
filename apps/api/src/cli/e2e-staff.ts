@@ -10,11 +10,21 @@ import { PasswordService } from '../auth/password.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StaffService } from '../users/staff.service';
 
-/** Staff accounts the Playwright flows sign in with (address office, plus an admin). */
+/**
+ * Staff accounts the Playwright flows sign in with (address office, plus an admin). The accessibility
+ * suite has its own, because specs run in parallel and two sign-ins to one account share a mailbox.
+ */
 export const E2E_STAFF = [
   { email: 'e2e-officer@govserve.test', fullName: 'E2E Officer', role: 'OFFICER' },
   { email: 'e2e-supervisor@govserve.test', fullName: 'E2E Supervisor', role: 'SUPERVISOR' },
   { email: 'e2e-admin@govserve.test', fullName: 'E2E Admin', role: 'ADMIN' },
+  { email: 'e2e-a11y-officer@govserve.test', fullName: 'E2E A11y Officer', role: 'OFFICER' },
+  {
+    email: 'e2e-a11y-supervisor@govserve.test',
+    fullName: 'E2E A11y Supervisor',
+    role: 'SUPERVISOR',
+  },
+  { email: 'e2e-a11y-admin@govserve.test', fullName: 'E2E A11y Admin', role: 'ADMIN' },
 ] as const;
 
 /**

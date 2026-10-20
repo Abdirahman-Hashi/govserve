@@ -14,3 +14,5 @@ apps/web/test-results/
 
 # Local stack secrets (make up)
 infra/.local/
+# Raw k6 output (the report is docs/perf/load-test.md)
+perf/k6/results/

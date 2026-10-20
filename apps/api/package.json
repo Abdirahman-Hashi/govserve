@@ -14,7 +14,9 @@
     "openapi:export": "prisma generate && ts-node --swc scripts/export-openapi.ts",
     "db:app-role": "ts-node --swc scripts/db-app-role.ts",
     "e2e:staff": "ts-node --swc src/cli/e2e-staff.ts",
+    "launch:check": "ts-node --swc src/cli/launch-check.ts",
     "admin:bootstrap": "prisma generate >/dev/null && ts-node --swc src/cli/bootstrap-admin.ts",
+    "authz:matrix": "ts-node --swc scripts/authz-matrix-doc.ts",
     "permissions:matrix": "prisma generate >/dev/null && ts-node --swc scripts/permissions-matrix.ts",
     "db:seed": "prisma generate >/dev/null && ts-node --swc prisma/seed.ts"
   },

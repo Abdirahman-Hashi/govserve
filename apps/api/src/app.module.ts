@@ -1,8 +1,9 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { ErrorEnvelopeFilter } from './common/filters/error-envelope.filter';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
+import { AppThrottlerGuard, ipTracker } from './common/guards/throttler.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { APP_CONFIG, type AppConfig, ConfigModule } from './config/config.module';
 import { ApplicationsModule } from './applications/applications.module';
@@ -36,7 +37,17 @@ import { StorageModule } from './storage/storage.module';
     ThrottlerModule.forRootAsync({
       inject: [APP_CONFIG],
       useFactory: (config: AppConfig) => ({
-        throttlers: [{ ttl: 60_000, limit: config.RATE_LIMIT_PER_MINUTE }],
+        throttlers: [
+          // Per caller (account, session cookie, or IP for public calls): see AppThrottlerGuard.
+          { name: 'default', ttl: 60_000, limit: config.RATE_LIMIT_PER_MINUTE },
+          // Coarse per-address ceiling, sized for many users behind one carrier NAT.
+          {
+            name: 'ip',
+            ttl: 60_000,
+            limit: config.RATE_LIMIT_PER_IP_PER_MINUTE,
+            getTracker: ipTracker,
+          },
+        ],
         skipIf: () => !config.RATE_LIMIT_ENABLED,
       }),
     }),
@@ -64,7 +75,7 @@ import { StorageModule } from './storage/storage.module';
   ],
   providers: [
     // Order matters: rate limiting, then authentication, then the role decision (deny by default).
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: AppThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_FILTER, useClass: ErrorEnvelopeFilter },

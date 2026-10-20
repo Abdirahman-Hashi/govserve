@@ -72,6 +72,12 @@ describe('loadEnv', () => {
     expect(() => loadEnv({ ...valid, DEPLOY_ENV: 'production' })).toThrow(/CARD_GATEWAY/);
   });
 
+  it('should size the database pool at 10 when DATABASE_POOL_MAX is unset and refuse values above 80', () => {
+    expect(loadEnv(valid).DATABASE_POOL_MAX).toBe(10);
+    expect(loadEnv({ ...valid, DATABASE_POOL_MAX: '40' }).DATABASE_POOL_MAX).toBe(40);
+    expect(() => loadEnv({ ...valid, DATABASE_POOL_MAX: '500' })).toThrow(/DATABASE_POOL_MAX/);
+  });
+
   it('should reject a short JWT secret', () => {
     expect(() => loadEnv({ ...valid, JWT_ACCESS_SECRET: 'short' })).toThrow(/JWT_ACCESS_SECRET/);
   });
@@ -87,7 +93,14 @@ describe('loadEnv', () => {
       DEPLOY_ENV: 'staging',
       DATABASE_APP_URL: 'postgresql://govserve_app:pw@db:5432/govserve',
       METRICS_TOKEN: 'm'.repeat(32),
+      TRUST_PROXY_HOPS: '2',
     };
+
+    it('should refuse a production build that does not trust its proxies', () => {
+      expect(() => loadEnv({ ...prod, TRUST_PROXY_HOPS: '0' })).toThrow(/TRUST_PROXY_HOPS/);
+      expect(loadEnv(prod).TRUST_PROXY_HOPS).toBe(2);
+      expect(loadEnv(valid).TRUST_PROXY_HOPS).toBe(0);
+    });
 
     it('should run without the owner credentials when the app role is configured', () => {
       const { DATABASE_URL: _owner, ...noOwner } = prod;
@@ -110,6 +123,12 @@ describe('loadEnv', () => {
       expect(
         loadEnv({ ...prod, DEPLOY_ENV: 'production', CARD_GATEWAY: 'disabled' }).CARD_GATEWAY,
       ).toBe('disabled');
+    });
+
+    it('should refuse disabled rate limiting when deployed to production', () => {
+      const live = { ...prod, DEPLOY_ENV: 'production', CARD_GATEWAY: 'disabled' };
+      expect(() => loadEnv({ ...live, RATE_LIMIT_ENABLED: 'false' })).toThrow(/RATE_LIMIT_ENABLED/);
+      expect(loadEnv({ ...prod, RATE_LIMIT_ENABLED: 'false' }).RATE_LIMIT_ENABLED).toBe(false);
     });
 
     it('should read secrets from *_FILE without echoing them', () => {

@@ -14,7 +14,7 @@ import { HealthService } from './health.service';
 
 @ApiTags('health')
 @Public()
-@SkipThrottle()
+@SkipThrottle({ default: true, ip: true })
 @Controller()
 export class HealthController {
   constructor(private readonly health: HealthService) {}

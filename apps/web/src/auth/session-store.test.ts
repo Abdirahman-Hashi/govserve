@@ -39,4 +39,41 @@ describe('session store', () => {
     expect(await refreshSession()).toBe(false);
     expect(getAccessToken()).toBeNull();
   });
+
+  it('should wait for Retry-After and try again when the refresh is rate limited', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('{}', { status: 429, headers: { 'Retry-After': '3' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(session), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const result = refreshSession();
+    await vi.advanceTimersByTimeAsync(2_900);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(await result).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(getAccessToken()).toBe('jwt-1');
+    vi.useRealTimers();
+  });
+
+  it('should give up after two retries when the refresh stays rate limited', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(new Response('{}', { status: 429, headers: { 'Retry-After': '1' } })),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const result = refreshSession();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(await result).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    vi.useRealTimers();
+  });
+
+  it('should not retry when the server fails, since the token may already have rotated', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response('{}', { status: 503 })));
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await refreshSession()).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

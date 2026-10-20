@@ -61,6 +61,8 @@ export function ApplicationWizard({ app }: { app: ApplicationDetail }) {
   const navigate = useNavigate();
   const autosave = useAutosave(app.id, app.formData);
   const saveCopies = useSaveApplication(app.id);
+  // The last copy-count save; submit waits for it so the fee is assessed on what the citizen chose.
+  const [copiesSaved, setCopiesSaved] = useState<Promise<unknown>>(() => Promise.resolve());
   const submit = useSubmitApplication(app.id);
   const formStepList = formSteps(app.uiSchema);
   const total = formStepList.length + 2;
@@ -83,9 +85,21 @@ export function ApplicationWizard({ app }: { app: ApplicationDetail }) {
     if (Object.keys(stepErrors).length === 0) go(step + 1);
   };
 
+  const changeCopies = (copies: number) => {
+    const saving = saveCopies.mutateAsync({ extraCopies: copies });
+    saving.catch(() => undefined); // reported when submitting
+    setCopiesSaved(saving);
+  };
+
   const doSubmit = async () => {
     setSubmitProblems([]);
     if (!(await autosave.flush())) return;
+    try {
+      await copiesSaved;
+    } catch {
+      setSubmitProblems([a.review.copiesNotSaved]);
+      return;
+    }
     try {
       await submit.mutateAsync();
       void navigate(`/citizen/applications/${app.id}`, { replace: true });
@@ -234,7 +248,7 @@ export function ApplicationWizard({ app }: { app: ApplicationDetail }) {
         fee={app.fee}
         provisional={app.feeProvisional}
         copies={app.extraCopies}
-        onCopiesChange={(copies) => saveCopies.mutate({ extraCopies: copies })}
+        onCopiesChange={changeCopies}
       />
       {submitProblems.length > 0 && (
         <div

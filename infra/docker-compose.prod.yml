@@ -62,6 +62,8 @@ services:
     environment: &api-env
       NODE_ENV: production
       DEPLOY_ENV: ${DEPLOY_ENV:?set DEPLOY_ENV to staging or production}
+      # Caddy → nginx → api: trust both hops' X-Forwarded-For so req.ip is the citizen's address.
+      TRUST_PROXY_HOPS: '2'
       LOG_LEVEL: ${LOG_LEVEL:-info}
       CORS_ORIGINS: ${WEB_ORIGIN}
       WEB_ORIGIN: ${WEB_ORIGIN:?set WEB_ORIGIN, e.g. https://gov.example.so}

@@ -95,6 +95,22 @@ describe('Authentication (integration)', () => {
       expect(h.mail.sent.length).toBe(before);
     });
 
+    it('should answer 202 to every request and create one account when the same email registers concurrently', async () => {
+      const email = uniqueEmail('race');
+      const attempts = await Promise.all(
+        [1, 2, 3, 4].map(() =>
+          request(h.http()).post(`${api}/auth/register`).send({
+            fullName: 'Amina Hassan',
+            email,
+            phone: '+252 61 234 5678',
+            password: PASSWORD,
+          }),
+        ),
+      );
+      expect(attempts.map((r) => r.status)).toEqual([202, 202, 202, 202]);
+      expect(await h.prisma.user.count({ where: { email } })).toBe(1);
+    });
+
     it('should refuse login with 403 EMAIL_NOT_VERIFIED before verification', async () => {
       const email = uniqueEmail('unverified');
       await request(h.http())

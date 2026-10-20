@@ -12,10 +12,24 @@ services:
       SMTP_REQUIRE_TLS: 'false'
       CARD_GATEWAY: mock
       COOKIE_SECURE: 'false'
+      # perf/k6/run.sh turns rate limiting off while the load test runs (all load comes from one IP).
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
     # The mock gateway calls back through the public URL, i.e. through Caddy on the host.
     extra_hosts: ['govserve.localhost:host-gateway']
     depends_on:
       objectstore-init: { condition: service_completed_successfully }
+  # Local only: a database GUI or psql on the host (127.0.0.1:5434). Production publishes no DB port.
+  postgres:
+    ports: ['127.0.0.1:5434:5432']
+    # Query statistics for the load test report (perf/k6/run.sh).
+    command:
+      [
+        'postgres',
+        '-c',
+        'shared_preload_libraries=pg_stat_statements',
+        '-c',
+        'pg_stat_statements.track=top',
+      ]
   migrate:
     build: { context: .., dockerfile: apps/api/Dockerfile, target: migrate }
   backup:

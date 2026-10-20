@@ -148,6 +148,49 @@ describe('application wizard', () => {
     expect(alert).toHaveTextContent(`${a.docs.anyOne}: Upload this document`);
   });
 
+  it('should wait for the copy count to be saved when submit is clicked right after changing it', async () => {
+    let current = draft({ formData: { fullName: 'Amina Hassan', purpose: 'EMPLOYMENT' } });
+    let copiesSavedAt = 0;
+    let submittedAt = 0;
+    setup(current, {
+      [`PATCH /api/v1/applications/${ID}`]: (body) => {
+        current = { ...current, ...(body as { extraCopies?: number }) };
+        copiesSavedAt = Date.now() + 300;
+        return { status: 200, body: current, delayMs: 300 };
+      },
+      [`POST /api/v1/applications/${ID}/submit`]: () => {
+        submittedAt = Date.now();
+        return { status: 200, body: { ...current, status: 'AWAITING_PAYMENT' } };
+      },
+    });
+    renderRoute(`/citizen/applications/${ID}`);
+    await userEvent.click(await screen.findByRole('button', { name: a.next }));
+    await userEvent.click(screen.getByRole('button', { name: a.next }));
+    await userEvent.selectOptions(screen.getByLabelText(a.review.copies), '1');
+    await userEvent.click(screen.getByRole('button', { name: a.review.submit }));
+    await waitFor(() => expect(submittedAt).toBeGreaterThan(0));
+    expect(submittedAt).toBeGreaterThanOrEqual(copiesSavedAt - 5);
+  });
+
+  it('should not submit and should say why when the copy count could not be saved', async () => {
+    const { calls } = setup(
+      draft({ formData: { fullName: 'Amina Hassan', purpose: 'EMPLOYMENT' } }),
+      {
+        [`PATCH /api/v1/applications/${ID}`]: () => ({
+          status: 500,
+          body: { error: { code: 'INTERNAL', message: 'Something went wrong' } },
+        }),
+      },
+    );
+    renderRoute(`/citizen/applications/${ID}`);
+    await userEvent.click(await screen.findByRole('button', { name: a.next }));
+    await userEvent.click(screen.getByRole('button', { name: a.next }));
+    await userEvent.selectOptions(screen.getByLabelText(a.review.copies), '1');
+    await userEvent.click(screen.getByRole('button', { name: a.review.submit }));
+    expect(await screen.findByText(a.review.copiesNotSaved)).toBeInTheDocument();
+    expect(calls.some((c) => c.key.endsWith('/submit'))).toBe(false);
+  });
+
   it('should show the reference, assessed fee and withdraw for a submitted application', async () => {
     setup(
       draft({

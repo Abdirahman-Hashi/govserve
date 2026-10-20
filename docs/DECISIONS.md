@@ -161,3 +161,44 @@ Settled in the Phase 0 interview. Details are in docs/SPEC.md, docs/SERVICES.md 
 - **Supply chain:** pinned image digests plus OS security upgrades at build; npm removed from runtime images; pnpm
   overrides lift `mysql2` and `deepmerge-ts` (pinned by Prisma 7.10.0) to fixed versions until Prisma does.
 - **First admin in production:** `node dist/cli/bootstrap-admin.js` inside the API container (moved from `scripts/`).
+
+## Phase 12 decisions (2026-10-20)
+- **Authorization is proven per endpoint:** `test/int/authz-matrix.ts` maps all 122 endpoints to their SPEC §2.1 row and
+  allowed roles. The integration test calls each one as every role and anonymously (guards answer 401/403; allowed roles
+  pass), as a citizen and staff of another department on real records (403 or 404, and nothing changes), checks that
+  lists never show another owner's or department's records, and that supervisors cannot widen reports to another
+  department. A unit test keeps the map, the controllers' decorators and docs/AUTHZ_MATRIX.md in step.
+- **Scope before state:** a staff action on a record checks the department as soon as the record is loaded, before any
+  state rule, so a 409 or 422 never tells another department that a payment or refund exists or what state it is in
+  (found in refunds by the matrix test; fixed).
+- **Rate limiting cannot be switched off in production** (`DEPLOY_ENV=production` refuses `RATE_LIMIT_ENABLED=false`).
+  The local stack switches it off only while the load test runs.
+- **Client IP behind the proxies (fixed, was launch-blocking):** the API did not trust X-Forwarded-For, so behind
+  Caddy → nginx every request had nginx's address. Audit rows recorded no real client IP, and every rate limit was
+  shared by all users. `TRUST_PROXY_HOPS` (2 in the production compose file) now gives the client's address, and
+  production builds refuse to start without it.
+- **Rate limits follow the caller, not only the address** (carrier NAT puts many citizens on one IP): signed-in requests
+  count per account, session refresh and logout per session (refresh-token family; without a cookie, as on every
+  anonymous page load, only the per-IP ceiling applies), and public endpoints (sign-in,
+  registration, codes, verification) and calls without a valid token per IP. A coarse per-IP ceiling on every endpoint
+  (`RATE_LIMIT_PER_IP_PER_MINUTE`, 1200) bounds anyone rotating tokens. Limits are per endpoint. Residual risk: sign-in
+  stays 10 a minute per IP, which a large NAT pool could hit at peak times; watch 429s on `/auth/login` after launch.
+  The web app now waits for `Retry-After` and retries a throttled refresh (up to twice) instead of signing the user
+  out; other refresh failures are not retried, since the token may already have rotated.
+- **Submit waits for the copy count:** choosing extra copies and submitting at once could assess the fee on the old
+  count (the citizen asked for copies and was charged and issued none). Submit now waits for that save and stops with
+  a message if it failed (found by the e2e suite).
+- **Concurrent registrations** of the same email answer 202 like any existing account instead of a 500.
+- **Launch check:** published service versions are immutable, so retired seeded test-fee versions remain in the table.
+  Go-live requires that no live version has `feeIsTest = true`, that no application was assessed under one, and that no
+  active test accounts exist (`dist/cli/launch-check.js`, docs/LAUNCH_CHECKLIST.md).
+- **Accessibility:** axe WCAG 2.0/2.1 A and AA checks run in the Playwright suite (CI e2e job) on public, citizen, officer,
+  supervisor and admin pages at 360 px and desktop. Automated checks do not replace one manual keyboard and
+  screen-reader pass before launch (launch checklist §6).
+- **Load test** (perf/k6) runs the NFR-006 mix against the production images on one machine: reads p95 8 ms, writes
+  p95 39 ms, no failures (docs/perf/load-test.md). The numbers are indicative and must be repeated on the staging VM.
+- **Public catalogue cache:** 30 s in process, cleared by every admin change to services or versions (one API container
+  per VM, ADR-0011); it removed 59% of catalogue queries. A larger database pool and libuv thread pool were measured
+  and did not help (bursts queue on the audit-chain lock; argon2 is CPU-bound), so they stay at their defaults;
+  `DATABASE_POOL_MAX` (default 10) is configurable. If the API ever runs as several containers, the cache's 30 s
+  limit is how stale another container's catalogue can be.

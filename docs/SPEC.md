@@ -47,14 +47,22 @@ certificate). A user has exactly one role. Staff have exactly one department, ex
 | Confirm manual payment > threshold (second confirmation) | — | — | D (not the same user who did the first confirmation) | — |
 | Confirm card payment | — (webhook only) | — | — | — |
 | Reassign / release claims | — | — | D | — |
+| Request a refund (duplicate, overpayment, withdrawal before review) | — | D | D | — |
 | Approve refund; resolve chargeback flag | — | — | D | — |
 | Revoke certificate | — | — | D | — |
 | Search applications/transactions | O | D | D | — |
 | Dashboard and reports; CSV export | — | — | D | ✓ (all depts) |
 | Audit log viewer (read-only) | — | — | D | ✓ |
+| Run audit-chain verification | — | — | — | ✓ |
 | Manage staff users, departments, roles | — | — | — | ✓ |
 | Manage services, service versions, fees, settings | — | — | — | ✓ |
+| View own notifications; notification preferences | O | O | O | O |
 | Public certificate/receipt verification | public | public | public | public |
+
+Endpoints outside the role matrix: sign-in, session and invitation endpoints are public and check their own code,
+token or cookie; `/health` and `/ready` are public probes; `/metrics` needs the Prometheus bearer token; the card
+webhook needs the gateway's HMAC signature; the mock gateway pages exist only on test deployments. The per-endpoint
+table, generated from the automated authorization test, is docs/AUTHZ_MATRIX.md.
 
 ## 3. Functional requirements
 

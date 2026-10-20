@@ -397,6 +397,7 @@ export const en = {
     review: {
       heading: 'Check your answers',
       copies: 'Extra certified copies',
+      copiesNotSaved: 'We could not save the number of copies. Choose it again, then submit.',
       noAnswer: 'Not answered',
       yes: 'Yes',
       no: 'No',

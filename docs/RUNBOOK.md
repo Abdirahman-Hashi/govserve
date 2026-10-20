@@ -281,6 +281,22 @@ someone with database owner access changed history (the app role cannot).
 3. Rotate the database owner password and the SSH deploy key; review who had VM access.
 4. Follow the incident checklist and report to the data protection owner.
 
+## Launch check
+Before opening production, and after changing fees: `docker exec govserve-stack-api-1 node dist/cli/launch-check.js`.
+It is read-only and exits 1 if a live service version still has test fees, if any application was assessed under a
+test-fee version, or if active test accounts exist. The rest of the go-live list is docs/LAUNCH_CHECKLIST.md.
+
+## Load test
+`perf/k6/run.sh` runs the NFR-006 mix (200 browsing, 50 submitting, 20 paying; `DURATION=5m` by default) against the
+local stack and saves the k6 output and the slowest queries (`pg_stat_statements`) under `perf/k6/results/`. While it
+runs, the API's rate limiting is off (all load comes from one IP); the script turns it back on when it exits. It
+creates or resets the `loadtest-NNN@govserve.test` citizens with a password kept in `infra/.local/loadtest.password`.
+For staging, create the accounts inside the staging API container
+(`docker exec -e LOADTEST_PASSWORD=… govserve-stack-api-1 node dist/cli/loadtest-citizens.js 270`), raise or disable
+its rate limit for the run, then run k6 directly from a machine near it:
+`BASE_URL=https://<staging host> LOADTEST_PASSWORD=… k6 run perf/k6/govserve.js`. Never run it against production (the
+CLI refuses to create accounts there). Results and fixes are in docs/perf/load-test.md.
+
 ## Incident checklist
 1. **Declare:** one incident lead; open a log (time, what was seen, what was done) and keep it current.
 2. **Contain:** roll back, put the site in maintenance (`docker stop govserve-stack-web-1`) or block the source at
