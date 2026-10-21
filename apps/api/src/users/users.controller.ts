@@ -79,6 +79,10 @@ export class UsersController {
   @ApiZodBody(ChangeEmailRequestSchema, { newEmail: 'amina.new@example.com' })
   @ApiResponse({ status: 202, description: 'Confirmation code sent to the new address' })
   @ApiResponse({ status: 409, description: 'EMAIL_IN_USE' })
+  @ApiResponse({
+    status: 429,
+    description: 'RATE_LIMITED, or CODE_LIMIT: 5 codes were sent to this address today',
+  })
   async changeEmail(
     @CurrentUser() user: AuthUser,
     @Body(new ZodPipe(ChangeEmailRequestSchema)) body: ChangeEmailRequest,

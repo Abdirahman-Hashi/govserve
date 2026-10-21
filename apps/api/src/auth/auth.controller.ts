@@ -137,6 +137,10 @@ export class AuthController {
   @ApiZodResponse(200, LoginResponseSchema)
   @ApiResponse({ status: 401, description: 'INVALID_CREDENTIALS' })
   @ApiResponse({ status: 403, description: 'EMAIL_NOT_VERIFIED' })
+  @ApiResponse({
+    status: 429,
+    description: 'RATE_LIMITED, or CODE_LIMIT: a staff account was sent 5 device codes today',
+  })
   async login(
     @Body(new ZodPipe(LoginRequestSchema)) body: LoginRequest,
     @ReqCtx() ctx: RequestContext,

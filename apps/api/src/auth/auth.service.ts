@@ -4,6 +4,8 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   UnauthorizedException,
@@ -24,6 +26,7 @@ import { NotificationDeliveryError } from '../notifications/notification-deliver
 import { PrismaService } from '../prisma/prisma.service';
 import { AUTH_POLICY } from './auth.constants';
 import { AFTER_SUCCESS, afterFailure, isLocked } from './lockout';
+import { LoginAttemptsService } from './login-attempts.service';
 import { OtpService, type OtpCheck } from './otp.service';
 import { PasswordService } from './password.service';
 import { SessionRevocationService } from './session-revocation.service';
@@ -65,6 +68,7 @@ export class AuthService {
     private readonly crypto: CryptoService,
     private readonly audit: AuditService,
     private readonly notifier: DirectNotifier,
+    private readonly attempts: LoginAttemptsService,
   ) {}
 
   // ─── Registration (FR-001, FR-002) ─────────────────────────────────────────
@@ -97,12 +101,14 @@ export class AuthService {
           after: { role: 'CITIZEN' },
           ctx,
         });
-        const { code } = await this.otp.issue(tx, {
+        const issued = await this.otp.issue(tx, {
           email: user.email,
           purpose: 'VERIFY_EMAIL',
           userId: user.id,
         });
-        return this.codeMessage(user.email, 'VERIFY_EMAIL_CODE', user.fullName, code);
+        return (
+          issued && this.codeMessage(user.email, 'VERIFY_EMAIL_CODE', user.fullName, issued.code)
+        );
       })
       .catch((err: unknown) => {
         // A concurrent registration of the same email won the race: answer as for an existing account.
@@ -115,9 +121,10 @@ export class AuthService {
 
   /** Verifies the email and signs the citizen in. */
   async verifyEmail(email: string, code: string, ctx: RequestContext): Promise<IssuedSession> {
-    const user = await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const check = await this.otp.verify(tx, { email, purpose: 'VERIFY_EMAIL', code });
-      if (!check.ok || !check.otp.userId) return otpFailure(check);
+      // Returned, not thrown: a wrong guess must commit so the attempt counts.
+      if (!check.ok || !check.otp.userId) return { kind: 'failed' as const, failed: check };
       const updated = await tx.user.update({
         where: { id: check.otp.userId },
         data: { emailVerifiedAt: new Date() },
@@ -130,9 +137,10 @@ export class AuthService {
         entityId: updated.id,
         ctx,
       });
-      return updated;
+      return { kind: 'ok' as const, user: updated };
     });
-    return this.startSession(user, ctx, { mfa: false });
+    if (result.kind === 'failed') return otpFailure(result.failed);
+    return this.startSession(result.user, ctx, { mfa: false });
   }
 
   async resendVerification(email: string): Promise<void> {
@@ -140,12 +148,8 @@ export class AuthService {
       const user = await tx.user.findUnique({ where: { email } });
       if (!user || user.emailVerifiedAt || user.status !== 'ACTIVE') return null;
       if (await this.otp.recentlyIssued(tx, email, 'VERIFY_EMAIL')) return null;
-      const { code } = await this.otp.issue(tx, {
-        email,
-        purpose: 'VERIFY_EMAIL',
-        userId: user.id,
-      });
-      return this.codeMessage(email, 'VERIFY_EMAIL_CODE', user.fullName, code);
+      const issued = await this.otp.issue(tx, { email, purpose: 'VERIFY_EMAIL', userId: user.id });
+      return issued && this.codeMessage(email, 'VERIFY_EMAIL_CODE', user.fullName, issued.code);
     });
     if (message) await this.send(message);
   }
@@ -159,9 +163,10 @@ export class AuthService {
       include: { department: true },
     });
     const passwordOk = await this.passwords.verify(user?.passwordHash, body.password);
+    const blocked = user ? await this.attempts.isBlocked(user.id, ctx.ip) : false;
 
-    if (!user || user.status === 'DEACTIVATED' || isLocked(user, now) || !passwordOk) {
-      await this.recordFailedLogin(user, passwordOk, now, ctx);
+    if (!user || user.status === 'DEACTIVATED' || isLocked(user, now) || blocked || !passwordOk) {
+      await this.recordFailedLogin(user, passwordOk, blocked, now, ctx);
       throw invalidCredentials();
     }
     if (user.role === 'CITIZEN' && !user.emailVerifiedAt) {
@@ -177,7 +182,7 @@ export class AuthService {
         where: { userId: user.id, deviceIdHash, revokedAt: null, expiresAt: { gt: now } },
       });
       if (!trusted) {
-        const { id, code } = await this.prisma.$transaction((tx) =>
+        const issued = await this.prisma.$transaction((tx) =>
           this.otp.issue(tx, {
             email: user.email,
             purpose: 'STAFF_DEVICE',
@@ -185,8 +190,20 @@ export class AuthService {
             contextHash: deviceIdHash,
           }),
         );
-        await this.send(this.codeMessage(user.email, 'STAFF_DEVICE_CODE', user.fullName, code));
-        return { status: 'OTP_REQUIRED', challengeId: id };
+        // The password was right, so saying why is safe; it stops endless second-factor guessing.
+        if (!issued) {
+          throw new HttpException(
+            {
+              code: 'CODE_LIMIT',
+              message: 'Too many sign-in codes today. Try again tomorrow or ask an administrator.',
+            },
+            HttpStatus.TOO_MANY_REQUESTS,
+          );
+        }
+        await this.send(
+          this.codeMessage(user.email, 'STAFF_DEVICE_CODE', user.fullName, issued.code),
+        );
+        return { status: 'OTP_REQUIRED', challengeId: issued.id };
       }
       await this.prisma.trustedDevice.update({
         where: { id: trusted.id },
@@ -205,7 +222,7 @@ export class AuthService {
   ): Promise<IssuedSession> {
     const now = new Date();
     const deviceIdHash = this.crypto.keyedHash('device', deviceId);
-    const user = await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const challenge = await tx.otpCode.findUnique({ where: { id: challengeId } });
       // The code only works from the browser it was issued to.
       if (
@@ -213,10 +230,16 @@ export class AuthService {
         challenge.purpose !== 'STAFF_DEVICE' ||
         challenge.contextHash !== deviceIdHash
       ) {
-        return otpFailure({ ok: false, reason: 'INVALID' });
+        return {
+          kind: 'failed' as const,
+          failed: { ok: false, reason: 'INVALID' } as OtpCheck,
+          userId: null,
+        };
       }
       const check = await this.otp.verify(tx, { id: challengeId, purpose: 'STAFF_DEVICE', code });
-      if (!check.ok || !check.otp.userId) return otpFailure(check);
+      // Returned, not thrown, so the attempt commits; it also counts toward the account lockout.
+      if (!check.ok || !check.otp.userId)
+        return { kind: 'failed' as const, failed: check, userId: challenge.userId };
       const found = await tx.user.findUnique({
         where: { id: check.otp.userId },
         include: { department: true },
@@ -246,9 +269,13 @@ export class AuthService {
         after: { trustedDays: AUTH_POLICY.trustedDeviceDays },
         ctx,
       });
-      return found;
+      return { kind: 'ok' as const, user: found };
     });
-    return this.startSession(user, ctx, { mfa: true });
+    if (result.kind === 'failed') {
+      if (result.userId) await this.recordFailedCode(result.userId, now, ctx);
+      return otpFailure(result.failed);
+    }
+    return this.startSession(result.user, ctx, { mfa: true });
   }
 
   // ─── Refresh and logout (FR-006) ───────────────────────────────────────────
@@ -292,9 +319,9 @@ export class AuthService {
 
   async logout(refreshToken: string | undefined, ctx: RequestContext): Promise<void> {
     if (!refreshToken) return;
-    await this.prisma.$transaction(async (tx) => {
+    const sid = await this.prisma.$transaction(async (tx) => {
       const revoked = await this.tokens.revokeByToken(tx, refreshToken, 'LOGOUT');
-      if (!revoked) return;
+      if (!revoked) return null;
       const user = await tx.user.findUnique({ where: { id: revoked.userId } });
       await this.audit.record(tx, {
         actor: user ? actorOf(user) : SYSTEM_ACTOR,
@@ -303,7 +330,10 @@ export class AuthService {
         entityId: revoked.userId,
         ctx,
       });
+      return revoked.familyId;
     });
+    // The access token carries the session (family) id; refuse it from now on, not in 15 minutes.
+    if (sid) await this.revocation.revokeSession(sid);
   }
 
   // ─── Password reset (FR-005) ───────────────────────────────────────────────
@@ -313,30 +343,32 @@ export class AuthService {
       const user = await tx.user.findUnique({ where: { email } });
       if (!user || user.status === 'DEACTIVATED' || !user.passwordHash) return null;
       if (await this.otp.recentlyIssued(tx, email, 'RESET_PASSWORD')) return null;
-      const { code } = await this.otp.issue(tx, {
+      const issued = await this.otp.issue(tx, {
         email,
         purpose: 'RESET_PASSWORD',
         userId: user.id,
       });
-      return this.codeMessage(email, 'RESET_PASSWORD_CODE', user.fullName, code);
+      return issued && this.codeMessage(email, 'RESET_PASSWORD_CODE', user.fullName, issued.code);
     });
     if (message) await this.send(message);
   }
 
   async resetPassword(body: ResetPasswordRequest, ctx: RequestContext): Promise<void> {
     this.passwords.assertAcceptable(body.password, body);
-    const passwordHash = await this.passwords.hash(body.password);
-    const userId = await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const check = await this.otp.verify(tx, {
         email: body.email,
         purpose: 'RESET_PASSWORD',
         code: body.code,
       });
-      if (!check.ok || !check.otp.userId) return otpFailure(check);
+      // Returned, not thrown: a wrong guess must commit so the attempt counts.
+      if (!check.ok || !check.otp.userId) return { kind: 'failed' as const, failed: check };
       const current = await tx.user.findUnique({ where: { id: check.otp.userId } });
       // A code issued before deactivation must not bring the account back.
       if (!current || current.status === 'DEACTIVATED')
-        return otpFailure({ ok: false, reason: 'INVALID' });
+        return { kind: 'failed' as const, failed: { ok: false, reason: 'INVALID' } as OtpCheck };
+      // Hashed only after the code checks out, so wrong guesses cannot make the server hash.
+      const passwordHash = await this.passwords.hash(body.password);
       const user = await tx.user.update({
         where: { id: current.id },
         data: {
@@ -356,9 +388,10 @@ export class AuthService {
         after: { sessionsRevoked: true },
         ctx,
       });
-      return user.id;
+      return { kind: 'ok' as const, userId: user.id };
     });
-    await this.revocation.revokeAllBefore(userId);
+    if (result.kind === 'failed') return otpFailure(result.failed);
+    await this.revocation.revokeAllBefore(result.userId);
   }
 
   // ─── Staff invitations (FR-007) ────────────────────────────────────────────
@@ -458,6 +491,7 @@ export class AuthService {
       });
       return issued;
     });
+    await this.attempts.clear(user.id, ctx.ip);
     return this.sessionFrom(user, refresh.token, refresh.familyId, refresh.expiresAt);
   }
 
@@ -482,9 +516,13 @@ export class AuthService {
   private async recordFailedLogin(
     user: UserWithDepartment | null,
     passwordOk: boolean,
+    blocked: boolean,
     now: Date,
     ctx: RequestContext,
   ): Promise<void> {
+    // Counted per source first; the account-wide count below is the backstop.
+    if (user && !blocked && !passwordOk && user.status !== 'DEACTIVATED' && !isLocked(user, now))
+      await this.attempts.recordFailure(user.id, ctx.ip);
     await this.prisma.$transaction(async (tx) => {
       if (!user) {
         await this.audit.record(tx, {
@@ -502,7 +540,9 @@ export class AuthService {
           ? 'DEACTIVATED'
           : isLocked(user, now)
             ? 'LOCKED'
-            : 'BAD_PASSWORD';
+            : blocked
+              ? 'SOURCE_BLOCKED'
+              : 'BAD_PASSWORD';
       let locked = false;
       if (reason === 'BAD_PASSWORD' && !passwordOk) {
         const next = afterFailure(user, now);
@@ -527,6 +567,45 @@ export class AuthService {
         ctx,
       });
       if (locked) {
+        await this.audit.record(tx, {
+          actor: SYSTEM_ACTOR,
+          action: 'AUTH_LOCKED',
+          entityType: 'User',
+          entityId: user.id,
+          departmentId: user.departmentId,
+          after: { lockMinutes: AUTH_POLICY.lockout.lockMinutes },
+          ctx,
+        });
+      }
+    });
+  }
+
+  /** A wrong staff device code counts like a wrong password, per source and for the account (FR-004). */
+  private async recordFailedCode(userId: string, now: Date, ctx: RequestContext): Promise<void> {
+    await this.attempts.recordFailure(userId, ctx.ip);
+    await this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.findUnique({ where: { id: userId } });
+      if (!user) return;
+      const next = afterFailure(user, now);
+      await tx.user.update({
+        where: { id: user.id },
+        data: {
+          failedLoginCount: next.failedLoginCount,
+          failedLoginAt: next.failedLoginAt,
+          lockedUntil: next.lockedUntil,
+          ...(next.justLocked && { status: 'LOCKED' }),
+        },
+      });
+      await this.audit.record(tx, {
+        actor: PUBLIC_ACTOR,
+        action: 'AUTH_LOGIN_FAILED',
+        entityType: 'User',
+        entityId: user.id,
+        departmentId: user.departmentId,
+        after: { reason: 'BAD_CODE' },
+        ctx,
+      });
+      if (next.justLocked) {
         await this.audit.record(tx, {
           actor: SYSTEM_ACTOR,
           action: 'AUTH_LOCKED',

@@ -70,6 +70,9 @@ async function main(): Promise<void> {
       }
       const passwordHash = await app.get(PasswordService).hash(password.data);
       await prisma.$transaction(async (tx) => {
+        // Every e2e run signs in from new browsers; clear the day's codes so the daily cap
+        // (AUTH_POLICY.otpDailyCodes) applies to real accounts, not to repeated test runs.
+        await tx.otpCode.deleteMany({ where: { email: staff.email } });
         await tx.user.update({
           where: { id: existing.id },
           data: { passwordHash, status: 'ACTIVE', failedLoginCount: 0, lockedUntil: null },

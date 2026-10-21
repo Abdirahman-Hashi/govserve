@@ -19,7 +19,10 @@ export type OtpCheck =
 export class OtpService {
   constructor(private readonly crypto: CryptoService) {}
 
-  /** Issues a new code and invalidates any earlier unused code for the same email and purpose. */
+  /**
+   * Issues a new code and invalidates any earlier unused code for the same email and purpose.
+   * Returns null when the daily cap for that email and purpose is reached.
+   */
   async issue(
     db: Db,
     input: {
@@ -29,7 +32,11 @@ export class OtpService {
       contextHash?: string | null;
     },
     now = new Date(),
-  ): Promise<IssuedOtp> {
+  ): Promise<IssuedOtp | null> {
+    const issuedToday = await db.otpCode.count({
+      where: { email: input.email, purpose: input.purpose, createdAt: { gt: dayBefore(now) } },
+    });
+    if (issuedToday >= AUTH_POLICY.otpDailyCodes) return null;
     await db.otpCode.updateMany({
       where: { email: input.email, purpose: input.purpose, consumedAt: null },
       data: { consumedAt: now },
@@ -62,6 +69,8 @@ export class OtpService {
   /**
    * Checks a code against the latest open code for the email and purpose (or a specific
    * challenge ID). Wrong codes use up an attempt; a correct code is consumed exactly once.
+   * Callers must let the transaction commit on failure (return, then throw), or the attempt is
+   * rolled back and never counts.
    */
   async verify(
     db: Db,
@@ -82,6 +91,12 @@ export class OtpService {
     if (otp.expiresAt <= now) return { ok: false, reason: 'EXPIRED' };
     if (otp.attempts >= AUTH_POLICY.otpMaxAttempts)
       return { ok: false, reason: 'TOO_MANY_ATTEMPTS' };
+    const failedToday = await db.otpCode.aggregate({
+      where: { email: otp.email, purpose: otp.purpose, createdAt: { gt: dayBefore(now) } },
+      _sum: { attempts: true },
+    });
+    if ((failedToday._sum.attempts ?? 0) >= AUTH_POLICY.otpDailyFailures)
+      return { ok: false, reason: 'TOO_MANY_ATTEMPTS' };
 
     if (!this.crypto.safeEqual(otp.codeHash, this.crypto.keyedHash('otp', input.code))) {
       await db.otpCode.update({ where: { id: otp.id }, data: { attempts: { increment: 1 } } });
@@ -98,3 +113,5 @@ export class OtpService {
     return consumed.count === 1 ? { ok: true, otp } : { ok: false, reason: 'INVALID' };
   }
 }
+
+const dayBefore = (now: Date) => new Date(now.getTime() - 86_400_000);

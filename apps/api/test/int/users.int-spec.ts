@@ -125,6 +125,30 @@ describe('Users, staff and authorization (integration)', () => {
     });
   });
 
+  describe('email change codes (ASVS 2.7)', () => {
+    it('should refuse the right code after five wrong guesses when changing email', async () => {
+      const a = await signUpCitizen(h);
+      const newEmail = uniqueEmail('guessed');
+      await request(h.http())
+        .post(`${api}/users/me/email`)
+        .set(bearer(a.session))
+        .send({ newEmail })
+        .expect(202);
+      const code = codeFrom(h.mail, newEmail, 'CHANGE_EMAIL_CODE');
+      const wrong = String((Number(code) + 1) % 1_000_000).padStart(6, '0');
+      const confirm = (c: string) =>
+        request(h.http())
+          .post(`${api}/users/me/email/confirm`)
+          .set(bearer(a.session))
+          .send({ code: c });
+      for (let i = 0; i < 5; i++) expect((await confirm(wrong)).status).toBe(409);
+      expect((await confirm(code)).status).toBe(409);
+      expect(
+        (await h.prisma.user.findUniqueOrThrow({ where: { id: a.session.user.id } })).email,
+      ).toBe(a.email);
+    });
+  });
+
   describe('staff administration (FR-007, FR-009)', () => {
     it('should invite, list, change role and audit with before/after', async () => {
       const admin = await signUpStaff(h, 'ADMIN', null);

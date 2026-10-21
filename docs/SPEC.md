@@ -71,7 +71,9 @@ table, generated from the automated authorization test, is docs/AUTHZ_MATRIX.md.
   unverified until the citizen enters a 6-digit email one-time code (valid 10 minutes, max 5 attempts).
 - **FR-002** Unverified accounts cannot submit applications. Unverified accounts are deleted after 7 days.
 - **FR-003** Password policy: minimum 10 characters, checked against a common-password list, hashed with argon2id.
-- **FR-004** After 5 failed logins in 15 minutes the account is locked for 15 minutes. The response is the same for unknown and locked accounts.
+- **FR-004** After 5 failed logins in 15 minutes from one address, that address is blocked for the account for 15 minutes;
+  after 20 from any addresses, the account itself is locked for 15 minutes (so a stranger cannot lock the owner out).
+  Wrong staff device codes count as failed logins. The response is the same for unknown, blocked and locked accounts.
 - **FR-005** Password reset uses an emailed one-time code. A successful reset revokes all of the user's sessions.
 - **FR-006** Sessions use a JWT access token (15 min) plus a rotating refresh token in an httpOnly, Secure,
   SameSite=Strict cookie. Reuse of a rotated refresh token revokes the whole token family (ADR-0003).

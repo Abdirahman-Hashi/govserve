@@ -125,6 +125,13 @@ describe('loadEnv', () => {
       ).toBe('disabled');
     });
 
+    it('should refuse insecure session cookies when deployed to production', () => {
+      const live = { ...prod, DEPLOY_ENV: 'production', CARD_GATEWAY: 'disabled' };
+      expect(() => loadEnv({ ...live, COOKIE_SECURE: 'false' })).toThrow(/COOKIE_SECURE/);
+      expect(loadEnv(live).COOKIE_SECURE).toBe(true);
+      expect(loadEnv({ ...prod, COOKIE_SECURE: 'false' }).COOKIE_SECURE).toBe(false);
+    });
+
     it('should refuse disabled rate limiting when deployed to production', () => {
       const live = { ...prod, DEPLOY_ENV: 'production', CARD_GATEWAY: 'disabled' };
       expect(() => loadEnv({ ...live, RATE_LIMIT_ENABLED: 'false' })).toThrow(/RATE_LIMIT_ENABLED/);

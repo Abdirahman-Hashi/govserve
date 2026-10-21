@@ -58,13 +58,14 @@ describe('TokenService', () => {
     expect(rows[0]!.rotatedAt).not.toBeNull();
   });
 
-  it('should revoke the whole family when a rotated token is reused', async () => {
+  it('should revoke the whole family when a rotated token is reused after the grace period', async () => {
     const { db, rows } = fakeDb();
-    const first = await service.issueRefresh(db, 'user-1', ctx);
-    const second = await service.rotate(db, first.token, ctx);
+    const t0 = new Date();
+    const first = await service.issueRefresh(db, 'user-1', ctx, undefined, t0);
+    const second = await service.rotate(db, first.token, ctx, t0);
     expect(second.status).toBe('OK');
 
-    const replay = await service.rotate(db, first.token, ctx);
+    const replay = await service.rotate(db, first.token, ctx, new Date(t0.getTime() + 11_000));
     expect(replay).toEqual({ status: 'REUSED', userId: 'user-1', familyId: first.familyId });
     expect(rows.every((r) => r.revokedAt !== null)).toBe(true);
     expect(rows.map((r) => r.revokedReason)).toEqual(['REUSE_DETECTED', 'REUSE_DETECTED']);
@@ -73,6 +74,17 @@ describe('TokenService', () => {
     if (second.status === 'OK') {
       expect((await service.rotate(db, second.refresh.token, ctx)).status).toBe('REUSED');
     }
+  });
+
+  it('should continue the session when a just-rotated token comes again within the grace period', async () => {
+    const { db, rows } = fakeDb();
+    const t0 = new Date();
+    const first = await service.issueRefresh(db, 'user-1', ctx, undefined, t0);
+    await service.rotate(db, first.token, ctx, t0);
+    const again = await service.rotate(db, first.token, ctx, new Date(t0.getTime() + 5_000));
+    expect(again.status).toBe('OK');
+    if (again.status === 'OK') expect(again.refresh.familyId).toBe(first.familyId);
+    expect(rows.every((r) => r.revokedAt === null)).toBe(true);
   });
 
   it('should reject an unknown or expired token', async () => {

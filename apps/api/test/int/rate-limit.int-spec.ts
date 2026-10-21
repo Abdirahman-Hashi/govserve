@@ -109,4 +109,31 @@ describe('Rate limits (integration, NFR-001)', () => {
     });
     expect(row.ip).toBe('198.51.100.9');
   });
+
+  it('should let the owner sign in from another address when a stranger blocked their own', async () => {
+    const { email } = await signUpCitizen(h, uniqueEmail('owner'));
+    const login = (ip: string, password: string) =>
+      request(h.http())
+        .post('/api/v1/auth/login')
+        .set('X-Forwarded-For', ip)
+        .send({ email, password });
+    for (let i = 0; i < 5; i++)
+      expect((await login('203.0.113.90', 'wrong password!!')).status).toBe(401);
+    expect((await login('203.0.113.90', PASSWORD)).status).toBe(401);
+    expect((await login('203.0.113.91', PASSWORD)).status).toBe(200);
+  });
+
+  it('should lock the account when 20 failures come from many addresses', async () => {
+    const { email } = await signUpCitizen(h, uniqueEmail('spread'));
+    const login = (ip: string, password: string) =>
+      request(h.http())
+        .post('/api/v1/auth/login')
+        .set('X-Forwarded-For', ip)
+        .send({ email, password });
+    for (let source = 0; source < 4; source++)
+      for (let i = 0; i < 5; i++)
+        expect((await login(`198.51.100.${source + 20}`, 'wrong password!!')).status).toBe(401);
+    expect((await h.prisma.user.findUniqueOrThrow({ where: { email } })).status).toBe('LOCKED');
+    expect((await login('198.51.100.99', PASSWORD)).status).toBe(401);
+  });
 });

@@ -39,6 +39,9 @@ function fakeDb() {
       },
     ),
     count: jest.fn(() => Promise.resolve(rows.length)),
+    aggregate: jest.fn(() =>
+      Promise.resolve({ _sum: { attempts: rows.reduce((n, r) => n + r.attempts, 0) } }),
+    ),
   };
   return { db: { otpCode } as unknown as Prisma.TransactionClient, rows };
 }
@@ -53,14 +56,14 @@ const email = 'amina@example.com';
 describe('OtpService', () => {
   it('should store only a hash of the code when issuing', async () => {
     const { db, rows } = fakeDb();
-    const { code } = await service.issue(db, { email, purpose: 'VERIFY_EMAIL' });
+    const { code } = (await service.issue(db, { email, purpose: 'VERIFY_EMAIL' }))!;
     expect(code).toMatch(/^\d{6}$/);
     expect(rows[0]!.codeHash).not.toContain(code);
   });
 
   it('should accept the right code once and reject reuse', async () => {
     const { db } = fakeDb();
-    const { code } = await service.issue(db, { email, purpose: 'VERIFY_EMAIL' });
+    const { code } = (await service.issue(db, { email, purpose: 'VERIFY_EMAIL' }))!;
     expect((await service.verify(db, { email, purpose: 'VERIFY_EMAIL', code })).ok).toBe(true);
     expect(await service.verify(db, { email, purpose: 'VERIFY_EMAIL', code })).toEqual({
       ok: false,
@@ -70,7 +73,7 @@ describe('OtpService', () => {
 
   it('should invalidate the previous code when a new one is issued', async () => {
     const { db } = fakeDb();
-    const first = await service.issue(db, { email, purpose: 'VERIFY_EMAIL' });
+    const first = (await service.issue(db, { email, purpose: 'VERIFY_EMAIL' }))!;
     await service.issue(db, { email, purpose: 'VERIFY_EMAIL' });
     const result = await service.verify(db, {
       email,
@@ -84,7 +87,7 @@ describe('OtpService', () => {
   it('should reject an expired code', async () => {
     const { db } = fakeDb();
     const issuedAt = new Date('2026-10-13T10:00:00Z');
-    const { code } = await service.issue(db, { email, purpose: 'VERIFY_EMAIL' }, issuedAt);
+    const { code } = (await service.issue(db, { email, purpose: 'VERIFY_EMAIL' }, issuedAt))!;
     const later = new Date('2026-10-13T10:10:01Z');
     expect(await service.verify(db, { email, purpose: 'VERIFY_EMAIL', code }, later)).toEqual({
       ok: false,
@@ -94,11 +97,33 @@ describe('OtpService', () => {
 
   it('should lock the code after 5 wrong attempts even if the right code follows', async () => {
     const { db } = fakeDb();
-    const { code } = await service.issue(db, { email, purpose: 'VERIFY_EMAIL' });
+    const { code } = (await service.issue(db, { email, purpose: 'VERIFY_EMAIL' }))!;
     const wrong = code === '000000' ? '111111' : '000000';
     for (let i = 0; i < 5; i++)
       await service.verify(db, { email, purpose: 'VERIFY_EMAIL', code: wrong });
     expect(await service.verify(db, { email, purpose: 'VERIFY_EMAIL', code })).toEqual({
+      ok: false,
+      reason: 'TOO_MANY_ATTEMPTS',
+    });
+  });
+
+  it('should stop issuing codes when five were issued for the email and purpose that day', async () => {
+    const { db } = fakeDb();
+    for (let i = 0; i < 5; i++)
+      expect(await service.issue(db, { email, purpose: 'RESET_PASSWORD' })).not.toBeNull();
+    expect(await service.issue(db, { email, purpose: 'RESET_PASSWORD' })).toBeNull();
+  });
+
+  it('should refuse a right code when ten wrong guesses were made that day across codes', async () => {
+    const { db } = fakeDb();
+    for (let round = 0; round < 2; round++) {
+      const { code } = (await service.issue(db, { email, purpose: 'RESET_PASSWORD' }))!;
+      const wrong = code === '000000' ? '111111' : '000000';
+      for (let i = 0; i < 5; i++)
+        await service.verify(db, { email, purpose: 'RESET_PASSWORD', code: wrong });
+    }
+    const { code } = (await service.issue(db, { email, purpose: 'RESET_PASSWORD' }))!;
+    expect(await service.verify(db, { email, purpose: 'RESET_PASSWORD', code })).toEqual({
       ok: false,
       reason: 'TOO_MANY_ATTEMPTS',
     });

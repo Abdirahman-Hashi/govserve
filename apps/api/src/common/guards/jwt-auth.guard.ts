@@ -32,7 +32,7 @@ export class JwtAuthGuard implements CanActivate {
     const claims = await this.tokens.verifyAccess(token).catch(() => {
       throw new UnauthorizedException();
     });
-    if (await this.revocation.isRevoked(claims.sub, claims.iat ?? 0))
+    if (await this.revocation.isRevoked(claims.sub, claims.iat ?? 0, claims.sid))
       throw new UnauthorizedException();
 
     req.user = {

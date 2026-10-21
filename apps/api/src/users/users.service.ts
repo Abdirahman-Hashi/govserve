@@ -1,6 +1,8 @@
 import {
   ConflictException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -117,25 +119,30 @@ export class UsersService {
         message: 'An account with this email already exists',
       });
     }
-    const { code } = await this.prisma.$transaction((tx) =>
+    const issued = await this.prisma.$transaction((tx) =>
       this.otp.issue(tx, { email: newEmail, purpose: 'CHANGE_EMAIL', userId: caller.id }),
     );
+    if (!issued) {
+      throw new HttpException(
+        {
+          code: 'CODE_LIMIT',
+          message: 'Too many codes for this address today. Try again tomorrow.',
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
     await this.notifier.send({
       to: newEmail,
       template: 'CHANGE_EMAIL_CODE',
-      vars: { firstName: firstName(user.fullName), code },
+      vars: { firstName: firstName(user.fullName), code: issued.code },
     });
   }
 
   async confirmEmailChange(caller: AuthUser, code: string, ctx: RequestContext): Promise<Profile> {
-    await this.prisma.$transaction(async (tx) => {
+    const failed = await this.prisma.$transaction(async (tx) => {
       const check = await this.otp.verify(tx, { userId: caller.id, purpose: 'CHANGE_EMAIL', code });
-      if (!check.ok) {
-        throw new ConflictException({
-          code: `CODE_${check.reason}`,
-          message: 'The code is incorrect or has expired',
-        });
-      }
+      // Returned, not thrown: a wrong guess must commit so the attempt counts.
+      if (!check.ok) return check.reason;
       try {
         await tx.user.update({
           where: { id: caller.id },
@@ -157,7 +164,14 @@ export class UsersService {
         entityId: caller.id,
         ctx,
       });
+      return null;
     });
+    if (failed) {
+      throw new ConflictException({
+        code: `CODE_${failed}`,
+        message: 'The code is incorrect or has expired',
+      });
+    }
     return this.profile(caller, caller.id);
   }
 

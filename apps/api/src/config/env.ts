@@ -157,6 +157,9 @@ function crossCheck(env: Env): string[] {
       '  - TRUST_PROXY_HOPS: production builds run behind the proxies; set it (2 for Caddy → nginx)',
     );
   }
+  if (env.DEPLOY_ENV === 'production' && !env.COOKIE_SECURE) {
+    problems.push('  - COOKIE_SECURE: session cookies must be Secure in production');
+  }
   if (env.DEPLOY_ENV === 'production' && !env.RATE_LIMIT_ENABLED) {
     problems.push('  - RATE_LIMIT_ENABLED: rate limiting cannot be turned off in production');
   }

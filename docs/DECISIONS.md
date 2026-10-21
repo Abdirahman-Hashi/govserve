@@ -188,6 +188,18 @@ Settled in the Phase 0 interview. Details are in docs/SPEC.md, docs/SERVICES.md 
 - **Submit waits for the copy count:** choosing extra copies and submitting at once could assess the fee on the old
   count (the citizen asked for copies and was charged and issued none). Submit now waits for that save and stops with
   a message if it failed (found by the e2e suite).
+- **Email codes (security review, auth):** a wrong code was counted inside the transaction that then threw, so the
+  count rolled back and every code could be guessed without limit (Critical; fixed: failures return out of the
+  transaction and throw after commit). Codes are now also capped per address and purpose at 5 issued and 10 wrong
+  guesses in 24 hours (ASVS 2.7/2.8), and wrong staff device codes count toward the account lockout. Staff and email
+  changes get 429 `CODE_LIMIT`; reset and resend stay silent. API 1.12.0.
+- **Auth review, Medium/Low fixes:** logout now revokes that session's access tokens at once (Redis, by session id),
+  not after 15 minutes. FR-004 changed: 5 failures from one address block that address for the account, and only 20
+  from any addresses lock the account, so a stranger cannot lock the owner out. A refresh token rotated in the last
+  10 s may be presented once more (two tabs refreshing together) instead of revoking the family; replays after that
+  still revoke it. Password reset hashes only after the code is verified. Production refuses `COOKIE_SECURE=false`.
+  Accepted: the small timing difference between unknown and known accounts on a failed sign-in (argon2 dominates).
+  Follow-up: alert admins when a staff account is locked (the `AUTH_LOCKED` audit row exists).
 - **Concurrent registrations** of the same email answer 202 like any existing account instead of a 500.
 - **Launch check:** published service versions are immutable, so retired seeded test-fee versions remain in the table.
   Go-live requires that no live version has `feeIsTest = true`, that no application was assessed under one, and that no
