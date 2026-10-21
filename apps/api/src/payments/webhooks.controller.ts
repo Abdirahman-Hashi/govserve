@@ -34,7 +34,7 @@ import { SIGNATURE_HEADER, verifyWebhook } from './webhook-signature';
 
 @ApiTags('payments')
 @Public()
-@SkipThrottle()
+@SkipThrottle({ default: true, ip: true })
 @Controller('payments/webhooks')
 export class CardWebhookController {
   private readonly logger = new Logger(CardWebhookController.name);

@@ -47,14 +47,22 @@ certificate). A user has exactly one role. Staff have exactly one department, ex
 | Confirm manual payment > threshold (second confirmation) | — | — | D (not the same user who did the first confirmation) | — |
 | Confirm card payment | — (webhook only) | — | — | — |
 | Reassign / release claims | — | — | D | — |
+| Request a refund (duplicate, overpayment, withdrawal before review) | — | D | D | — |
 | Approve refund; resolve chargeback flag | — | — | D | — |
 | Revoke certificate | — | — | D | — |
 | Search applications/transactions | O | D | D | — |
 | Dashboard and reports; CSV export | — | — | D | ✓ (all depts) |
 | Audit log viewer (read-only) | — | — | D | ✓ |
+| Run audit-chain verification | — | — | — | ✓ |
 | Manage staff users, departments, roles | — | — | — | ✓ |
 | Manage services, service versions, fees, settings | — | — | — | ✓ |
+| View own notifications; notification preferences | O | O | O | O |
 | Public certificate/receipt verification | public | public | public | public |
+
+Endpoints outside the role matrix: sign-in, session and invitation endpoints are public and check their own code,
+token or cookie; `/health` and `/ready` are public probes; `/metrics` needs the Prometheus bearer token; the card
+webhook needs the gateway's HMAC signature; the mock gateway pages exist only on test deployments. The per-endpoint
+table, generated from the automated authorization test, is docs/AUTHZ_MATRIX.md.
 
 ## 3. Functional requirements
 
@@ -63,7 +71,9 @@ certificate). A user has exactly one role. Staff have exactly one department, ex
   unverified until the citizen enters a 6-digit email one-time code (valid 10 minutes, max 5 attempts).
 - **FR-002** Unverified accounts cannot submit applications. Unverified accounts are deleted after 7 days.
 - **FR-003** Password policy: minimum 10 characters, checked against a common-password list, hashed with argon2id.
-- **FR-004** After 5 failed logins in 15 minutes the account is locked for 15 minutes. The response is the same for unknown and locked accounts.
+- **FR-004** After 5 failed logins in 15 minutes from one address, that address is blocked for the account for 15 minutes;
+  after 20 from any addresses, the account itself is locked for 15 minutes (so a stranger cannot lock the owner out).
+  Wrong staff device codes count as failed logins. The response is the same for unknown, blocked and locked accounts.
 - **FR-005** Password reset uses an emailed one-time code. A successful reset revokes all of the user's sessions.
 - **FR-006** Sessions use a JWT access token (15 min) plus a rotating refresh token in an httpOnly, Secure,
   SameSite=Strict cookie. Reuse of a rotated refresh token revokes the whole token family (ADR-0003).

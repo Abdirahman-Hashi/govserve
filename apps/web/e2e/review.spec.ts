@@ -1,39 +1,8 @@
-import { expect, type Page, test } from '@playwright/test';
-import { pdf, signUp } from './helpers';
+import { expect, test } from '@playwright/test';
+import { applyForProofOfAddress, signUp } from './helpers';
 import { clearMailbox, latestCode } from './mailpit';
 
 const OFFICER = 'e2e-officer@govserve.test';
-
-async function applyForProofOfAddress(page: Page): Promise<string> {
-  await page.goto('/services/PROOF_OF_ADDRESS');
-  await page.getByRole('button', { name: 'Apply now' }).click();
-  await expect(page).toHaveURL(/\/citizen\/applications\/[0-9a-f-]+$/, { timeout: 30_000 });
-  await page.getByLabel(/^Full name/).fill('Amina Hassan Warsame');
-  await page.getByLabel(/^Date of birth/).fill('1990-04-12');
-  await page.getByLabel(/^ID or passport number/).fill('SO7654321');
-  await page.getByLabel(/^Phone number/).fill('+252 61 234 5678');
-  await page.getByLabel(/^Email address/).fill('amina@example.com');
-  await page.getByRole('button', { name: 'Continue' }).click();
-  await page.getByLabel(/^District/).fill('Hodan');
-  await page.getByLabel(/^Neighbourhood/).fill('Taleex');
-  await page.getByLabel(/^Street or landmark/).fill('Near the Taleex junction');
-  await page.getByLabel(/^Years at this address/).fill('4');
-  await page.getByLabel('I rent it').check();
-  await page.getByRole('button', { name: 'Continue' }).click();
-  await page
-    .getByLabel(/Choose file: National ID card or passport/)
-    .setInputFiles({ name: 'id.pdf', mimeType: 'application/pdf', buffer: pdf });
-  await page
-    .getByLabel(/Choose file: Utility bill/)
-    .setInputFiles({ name: 'bill.pdf', mimeType: 'application/pdf', buffer: pdf });
-  await expect(page.getByRole('status').filter({ hasText: /✓ Uploaded/ })).toHaveCount(2, {
-    timeout: 30_000,
-  });
-  await page.getByRole('button', { name: 'Continue' }).click();
-  await page.getByRole('button', { name: 'Submit application' }).click();
-  await expect(page.getByTestId('reference')).toHaveText(/^GS-\d{4}-\d{6}$/, { timeout: 30_000 });
-  return (await page.getByTestId('reference').textContent())!;
-}
 
 test.describe('officer review', () => {
   test.beforeEach(({ page: _page }, testInfo) => {

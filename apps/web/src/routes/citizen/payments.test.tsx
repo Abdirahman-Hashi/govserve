@@ -209,6 +209,15 @@ describe('public receipt verification', () => {
     expect(screen.getByTestId('receipt-status')).toHaveTextContent('✕');
   });
 
+  it('should keep the page heading when the receipt number is unknown', async () => {
+    mockApi({ 'POST /api/v1/auth/refresh': NO_SESSION });
+    renderRoute('/verify/r/R-2026-000999');
+    expect(await screen.findByText(t.verifyReceipt.notFound)).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 1, name: t.verifyReceipt.heading }),
+    ).toBeInTheDocument();
+  });
+
   it('should explain when the link carries no signature', async () => {
     const { payload, pub } = await signedReceipt();
     serve(payload, pub, 'REFUNDED');

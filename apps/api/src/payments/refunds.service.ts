@@ -12,6 +12,7 @@ import {
   type RequestRefundRequest,
 } from '@govserve/shared';
 import { type AuthUser } from '../auth/auth.types';
+import { assertSameDepartment } from '../common/guards/scope';
 import { type RequestContext } from '../common/request-context';
 import {
   type Payment,
@@ -76,7 +77,7 @@ export class RefundsService {
     ctx: RequestContext,
   ): Promise<RefundDto> {
     const refund = await this.prisma.$transaction(async (tx) => {
-      const payment = await this.paymentIn(tx, paymentId);
+      const payment = await this.paymentIn(tx, paymentId, user);
       return this.create(tx, payment, body.reason, BigInt(body.amountCents), user, {
         note: body.note ?? null,
         ctx,
@@ -114,7 +115,7 @@ export class RefundsService {
   /** R2. Card refunds are then sent to the gateway (after commit); the webhook completes them. */
   async approve(user: AuthUser, id: string, ctx: RequestContext): Promise<RefundDto> {
     const refund = await this.prisma.$transaction(async (tx) => {
-      const r = await this.refundIn(tx, id);
+      const r = await this.refundIn(tx, id, user);
       return this.money.transitionRefund(tx, r, 'APPROVED', {
         actor: user,
         scope: scopeOf(r),
@@ -129,7 +130,7 @@ export class RefundsService {
   /** R3. */
   async decline(user: AuthUser, id: string, note: string, ctx: RequestContext): Promise<RefundDto> {
     await this.prisma.$transaction(async (tx) => {
-      const r = await this.refundIn(tx, id);
+      const r = await this.refundIn(tx, id, user);
       await this.money.transitionRefund(tx, r, 'DECLINED', {
         actor: user,
         scope: scopeOf(r),
@@ -149,7 +150,7 @@ export class RefundsService {
     ctx: RequestContext,
   ): Promise<RefundDto> {
     await this.prisma.$transaction(async (tx) => {
-      const r = await this.refundIn(tx, id);
+      const r = await this.refundIn(tx, id, user);
       if (r.payment.channel === 'CARD') {
         throw new ConflictException({
           code: 'CARD_REFUND_BY_GATEWAY',
@@ -170,7 +171,7 @@ export class RefundsService {
   /** R6: retry a card refund the gateway failed. */
   async retry(user: AuthUser, id: string, ctx: RequestContext): Promise<RefundDto> {
     await this.prisma.$transaction(async (tx) => {
-      const r = await this.refundIn(tx, id);
+      const r = await this.refundIn(tx, id, user);
       await this.money.transitionRefund(tx, r, 'APPROVED', { actor: user, scope: scopeOf(r), ctx });
     });
     await this.sendToGateway(id);
@@ -303,18 +304,26 @@ export class RefundsService {
     }
   }
 
-  private async paymentIn(tx: Prisma.TransactionClient, id: string) {
+  /** Loads a payment; for staff, the department is checked first so its state is never revealed. */
+  private async paymentIn(tx: Prisma.TransactionClient, id: string, user?: AuthUser) {
     const payment = await tx.payment.findUnique({
       where: { id },
       include: { application: { select: { applicantId: true, departmentId: true } } },
     });
     if (!payment) throw new NotFoundException();
+    if (user) assertSameDepartment(user, payment.application.departmentId);
     return payment;
   }
 
-  private async refundIn(tx: Prisma.TransactionClient, id: string): Promise<RefundWithPayment> {
+  /** Loads a refund; for staff, the department is checked before any state check. */
+  private async refundIn(
+    tx: Prisma.TransactionClient,
+    id: string,
+    user?: AuthUser,
+  ): Promise<RefundWithPayment> {
     const r = await tx.refund.findUnique({ where: { id }, include });
     if (!r) throw new NotFoundException();
+    if (user) assertSameDepartment(user, r.payment.application.departmentId);
     return r;
   }
 }

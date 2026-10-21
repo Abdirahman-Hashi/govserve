@@ -13,7 +13,7 @@ import { MetricsService } from './metrics.service';
  */
 @ApiExcludeController()
 @Public()
-@SkipThrottle()
+@SkipThrottle({ default: true, ip: true })
 @Controller('metrics')
 export class MetricsController {
   constructor(

@@ -11,8 +11,8 @@ const PATTERNS = [
   /'(APPLICATION_[A-Z_]+|CERTIFICATE_[A-Z_]+|DOCUMENT_[A-Z_]+|SIGNING_KEY_[A-Z_]+)'/g,
 ];
 
-/** The e2e staff fixture (refused in production) audits its own resets; it is not a product action. */
-const NOT_PRODUCT = new Set(['e2e-staff.ts']);
+/** Test fixtures (refused in production) audit their own writes; they are not product actions. */
+const NOT_PRODUCT = new Set(['e2e-staff.ts', 'loadtest-citizens.ts']);
 
 function files(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {

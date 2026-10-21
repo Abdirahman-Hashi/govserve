@@ -4,6 +4,7 @@ import { REDIS } from '../redis/redis.module';
 import { AUTH_POLICY } from './auth.constants';
 
 const key = (userId: string) => `auth:sessions-revoked-at:${userId}`;
+const sessionKey = (sid: string) => `auth:session-revoked:${sid}`;
 
 /**
  * Access tokens are stateless for 15 minutes. When a user is deactivated, changes role or
@@ -25,10 +26,17 @@ export class SessionRevocationService {
     );
   }
 
-  async isRevoked(userId: string, issuedAtSeconds: number): Promise<boolean> {
+  /** Logout of one session: its access tokens stop working at once (ASVS 3.3.1). */
+  async revokeSession(sid: string): Promise<void> {
     await this.ensureConnected();
-    const value = await this.redis.get(key(userId));
-    return value !== null && issuedAtSeconds < Number(value);
+    await this.redis.set(sessionKey(sid), '1', 'EX', AUTH_POLICY.accessTokenTtlSeconds + 60);
+  }
+
+  /** True when the user's tokens from before a revocation, or this session, are no longer valid. */
+  async isRevoked(userId: string, issuedAtSeconds: number, sid?: string): Promise<boolean> {
+    await this.ensureConnected();
+    const [userCutoff, session] = await this.redis.mget(key(userId), sessionKey(sid ?? '-'));
+    return (userCutoff != null && issuedAtSeconds < Number(userCutoff)) || session != null;
   }
 
   private async ensureConnected(): Promise<void> {

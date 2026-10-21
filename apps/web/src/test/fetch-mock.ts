@@ -1,6 +1,7 @@
 import { vi } from 'vitest';
 
-type Handler = (body: unknown) => { status: number; body?: unknown };
+/** `delayMs` holds the response back, to test what the UI does while a request is in flight. */
+type Handler = (body: unknown) => { status: number; body?: unknown; delayMs?: number };
 
 /** Routes fetch calls by "METHOD path" to handlers; unknown routes return 404. */
 export function mockApi(routes: Record<string, Handler>) {
@@ -15,11 +16,12 @@ export function mockApi(routes: Record<string, Handler>) {
     const res = handler
       ? handler(body)
       : { status: 404, body: { error: { code: 'NOT_FOUND', message: 'Not found' } } };
-    return Promise.resolve(
+    const response = () =>
       new Response(res.body === undefined ? null : JSON.stringify(res.body), {
         status: res.status,
-      }),
-    );
+      });
+    if (!res.delayMs) return Promise.resolve(response());
+    return new Promise<Response>((done) => setTimeout(() => done(response()), res.delayMs));
   });
   vi.stubGlobal('fetch', fetchMock);
   return { calls, fetchMock };

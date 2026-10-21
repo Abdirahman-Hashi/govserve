@@ -75,6 +75,30 @@ describe('Service catalogue (integration)', () => {
       expect(detail).not.toHaveProperty('approvalMode');
     });
 
+    it('should show an admin change at once when the public catalogue was just cached', async () => {
+      const id = await serviceId('PROOF_OF_ADDRESS');
+      const read = async () =>
+        (await request(h.http()).get(`${api}/catalogue/services/PROOF_OF_ADDRESS`).expect(200))
+          .body as CatalogueServiceDetail;
+      const before = await read();
+      await request(h.http())
+        .patch(`${api}/admin/services/${id}`)
+        .set(as())
+        .send({ description: `${before.description} (updated)` })
+        .expect(200);
+      expect((await read()).description).toBe(`${before.description} (updated)`);
+      const list = (await request(h.http()).get(`${api}/catalogue/services`).expect(200))
+        .body as CatalogueServiceSummary[];
+      expect(list.find((x) => x.code === 'PROOF_OF_ADDRESS')?.description).toBe(
+        `${before.description} (updated)`,
+      );
+      await request(h.http())
+        .patch(`${api}/admin/services/${id}`)
+        .set(as())
+        .send({ description: before.description })
+        .expect(200);
+    });
+
     it('should search by name or description, case-insensitively', async () => {
       const res = await request(h.http())
         .get(`${api}/catalogue/services`)

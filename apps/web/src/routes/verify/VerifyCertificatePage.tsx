@@ -108,11 +108,14 @@ export function VerifyCertificatePage() {
   if (cert.isPending) return <p role="status">{t.loading}</p>;
   if (cert.isError) {
     return (
-      <FormAlert>
-        {cert.error instanceof ApiError && cert.error.status === 404
-          ? v.notFound
-          : t.errors.generic}
-      </FormAlert>
+      <div className="max-w-lg space-y-6">
+        <h1 className="text-2xl font-bold">{v.heading}</h1>
+        <FormAlert>
+          {cert.error instanceof ApiError && cert.error.status === 404
+            ? v.notFound
+            : t.errors.generic}
+        </FormAlert>
+      </div>
     );
   }
   const c = cert.data;

@@ -75,7 +75,8 @@ export class TokenService {
 
   /**
    * Exchanges a refresh token for a new one in the same family. Presenting a token that was
-   * already rotated or revoked is treated as theft: the whole family is revoked.
+   * revoked, rotated more than refreshReuseGraceSeconds ago, or already presented once within
+   * that grace period, is treated as theft: the whole family is revoked.
    */
   async rotate(
     db: Db,
@@ -85,21 +86,29 @@ export class TokenService {
   ): Promise<RotateResult> {
     const row = await db.refreshToken.findUnique({ where: { tokenHash: hashToken(token) } });
     if (!row) return { status: 'INVALID' };
-    if (row.rotatedAt || row.revokedAt) {
-      await this.revokeFamily(db, row.familyId, 'REUSE_DETECTED', now);
-      return { status: 'REUSED', userId: row.userId, familyId: row.familyId };
-    }
+    const reused = () =>
+      this.revokeFamily(db, row.familyId, 'REUSE_DETECTED', now).then(
+        () => ({ status: 'REUSED', userId: row.userId, familyId: row.familyId }) as const,
+      );
+    const inGrace = (rotatedAt: Date) =>
+      now.getTime() - rotatedAt.getTime() <= AUTH_POLICY.refreshReuseGraceSeconds * 1000;
+    if (row.revokedAt) return reused();
     if (row.expiresAt <= now) return { status: 'INVALID' };
-
-    // Conditional update: of two concurrent rotations with the same token, only one wins;
-    // the loser is handled as reuse on its next attempt.
+    // Conditional updates: of concurrent requests with the same token, one rotates it and at most
+    // one more, within the grace period, continues the session; any other use is reuse.
     const claimed = await db.refreshToken.updateMany({
       where: { id: row.id, rotatedAt: null, revokedAt: null },
       data: { rotatedAt: now },
     });
     if (claimed.count !== 1) {
-      await this.revokeFamily(db, row.familyId, 'REUSE_DETECTED', now);
-      return { status: 'REUSED', userId: row.userId, familyId: row.familyId };
+      const current = await db.refreshToken.findUnique({ where: { id: row.id } });
+      if (!current?.rotatedAt || current.revokedAt || !inGrace(current.rotatedAt)) return reused();
+      // Another tab rotated it a moment ago: continue the same session, but only once.
+      const graced = await db.refreshToken.updateMany({
+        where: { id: row.id, graceUsedAt: null, revokedAt: null },
+        data: { graceUsedAt: now },
+      });
+      if (graced.count !== 1) return reused();
     }
     const refresh = await this.issueRefresh(db, row.userId, ctx, row.familyId, now);
     return { status: 'OK', userId: row.userId, refresh };

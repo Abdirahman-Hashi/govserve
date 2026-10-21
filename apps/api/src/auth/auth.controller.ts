@@ -122,8 +122,9 @@ export class AuthController {
   @ApiResponse({ status: 202, description: 'A new code was sent if one was due' })
   async resendCode(
     @Body(new ZodPipe(ResendCodeRequestSchema)) body: ResendCodeRequest,
+    @ReqCtx() ctx: RequestContext,
   ): Promise<void> {
-    await this.auth.resendVerification(body.email);
+    await this.auth.resendVerification(body.email, ctx);
   }
 
   @Post('login')
@@ -137,6 +138,11 @@ export class AuthController {
   @ApiZodResponse(200, LoginResponseSchema)
   @ApiResponse({ status: 401, description: 'INVALID_CREDENTIALS' })
   @ApiResponse({ status: 403, description: 'EMAIL_NOT_VERIFIED' })
+  @ApiResponse({
+    status: 429,
+    description:
+      'RATE_LIMITED, or CODE_LIMIT: 5 device codes were sent to this address today (20 in all)',
+  })
   async login(
     @Body(new ZodPipe(LoginRequestSchema)) body: LoginRequest,
     @ReqCtx() ctx: RequestContext,
@@ -225,8 +231,9 @@ export class AuthController {
   @ApiResponse({ status: 202, description: 'A reset code was sent if the account exists' })
   async forgot(
     @Body(new ZodPipe(ForgotPasswordRequestSchema)) body: ForgotPasswordRequest,
+    @ReqCtx() ctx: RequestContext,
   ): Promise<void> {
-    await this.auth.forgotPassword(body.email);
+    await this.auth.forgotPassword(body.email, ctx);
   }
 
   @Post('password/reset')

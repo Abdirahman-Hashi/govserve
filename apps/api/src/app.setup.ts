@@ -25,6 +25,13 @@ export function applyGlobalPrefix(app: INestApplication): void {
 export function configureApp(app: INestApplication): void {
   const config = app.get<AppConfig>(APP_CONFIG);
 
+  // Before anything reads req.ip (logging, rate limits, audit rows).
+  if (config.TRUST_PROXY_HOPS > 0) {
+    const express = app.getHttpAdapter().getInstance() as {
+      set(key: string, value: unknown): void;
+    };
+    express.set('trust proxy', config.TRUST_PROXY_HOPS);
+  }
   app.useLogger(app.get(Logger));
   app.use(httpMetrics(app.get(MetricsService)));
   app.use(helmet());

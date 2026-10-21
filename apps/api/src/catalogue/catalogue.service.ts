@@ -44,8 +44,18 @@ const notEditable = () =>
     message: 'Only draft versions can be changed. Create a new draft instead.',
   });
 
+/** How long a public catalogue answer may be reused (admin changes in this process clear it at once). */
+export const PUBLIC_CACHE_MS = 30_000;
+
 @Injectable()
 export class CatalogueService {
+  /**
+   * The public catalogue was the most frequent query in the load test (every browsing visit) and
+   * changes only when an admin edits a service or publishes/retires a version, so answers are kept
+   * for PUBLIC_CACHE_MS. Searches are not cached (unbounded keys).
+   */
+  private readonly publicCache = new Map<string, { until: number; value: Promise<unknown> }>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -53,8 +63,27 @@ export class CatalogueService {
 
   // ─── Public (FR-023) ───────────────────────────────────────────────────────
 
+  private cached<T>(key: string, load: () => Promise<T>): Promise<T> {
+    const hit = this.publicCache.get(key);
+    if (hit && hit.until > Date.now()) return hit.value as Promise<T>;
+    const value = load();
+    this.publicCache.set(key, { until: Date.now() + PUBLIC_CACHE_MS, value });
+    value.catch(() => this.publicCache.delete(key)); // never keep a failure (e.g. 404) around
+    return value;
+  }
+
+  /** Called after every admin change that can alter what the public catalogue shows. */
+  private clearPublicCache(): void {
+    this.publicCache.clear();
+  }
+
   async listPublic(q?: string): Promise<CatalogueServiceSummary[]> {
     const term = q?.trim();
+    if (!term) return this.cached('list', () => this.loadPublicList());
+    return this.loadPublicList(term);
+  }
+
+  private async loadPublicList(term?: string): Promise<CatalogueServiceSummary[]> {
     const services = await this.prisma.service.findMany({
       where: {
         active: true,
@@ -72,7 +101,11 @@ export class CatalogueService {
     return services.map((s) => toSummary(s, published(s)!));
   }
 
-  async getPublic(code: string): Promise<CatalogueServiceDetail> {
+  getPublic(code: string): Promise<CatalogueServiceDetail> {
+    return this.cached(`code:${code}`, () => this.loadPublic(code));
+  }
+
+  private async loadPublic(code: string): Promise<CatalogueServiceDetail> {
     const service = await this.prisma.service.findUnique({
       where: { code },
       include: { department: true, versions: { where: { status: 'PUBLISHED' } } },
@@ -149,6 +182,7 @@ export class CatalogueService {
         });
         return service;
       });
+      this.clearPublicCache();
       return toAdminService(created);
     } catch (err) {
       if (isUniqueViolation(err)) {
@@ -188,6 +222,7 @@ export class CatalogueService {
       });
       return service;
     });
+    this.clearPublicCache();
     return toAdminService(updated);
   }
 
@@ -370,6 +405,7 @@ export class CatalogueService {
       });
       return live;
     });
+    this.clearPublicCache();
     return toVersionDto(version);
   }
 
@@ -398,6 +434,7 @@ export class CatalogueService {
       });
       return tx.serviceVersion.findUniqueOrThrow({ where: { id } });
     });
+    this.clearPublicCache();
     return toVersionDto(version);
   }
 

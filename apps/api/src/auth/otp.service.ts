@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { CryptoService } from '../crypto/crypto.service';
 import { type OtpCode, type OtpPurpose, type Prisma } from '../generated/prisma/client';
 import { AUTH_POLICY } from './auth.constants';
+import { CodeAttemptsService } from './code-attempts.service';
 
 type Db = Prisma.TransactionClient;
 
@@ -17,9 +18,16 @@ export type OtpCheck =
 /** Six-digit email one-time codes (FR-001, FR-005, FR-008): hashed, 10 min, 5 attempts. */
 @Injectable()
 export class OtpService {
-  constructor(private readonly crypto: CryptoService) {}
+  constructor(
+    private readonly crypto: CryptoService,
+    private readonly attempts: CodeAttemptsService,
+  ) {}
 
-  /** Issues a new code and invalidates any earlier unused code for the same email and purpose. */
+  /**
+   * Issues a new code and invalidates any earlier unused code for the same email and purpose.
+   * Returns null when the daily cap for that email and purpose is reached, from the requesting
+   * source address or in all.
+   */
   async issue(
     db: Db,
     input: {
@@ -27,9 +35,20 @@ export class OtpService {
       purpose: OtpPurpose;
       userId?: string | null;
       contextHash?: string | null;
+      /** The requesting client's address (RequestContext.ip). */
+      source: string | null;
     },
     now = new Date(),
-  ): Promise<IssuedOtp> {
+  ): Promise<IssuedOtp | null> {
+    const { email, purpose, source } = input;
+    if (
+      (await this.attempts.count('issued', email, purpose, source)) >= AUTH_POLICY.otpCodesPerSource
+    )
+      return null;
+    const issuedToday = await db.otpCode.count({
+      where: { email: input.email, purpose: input.purpose, createdAt: { gt: dayBefore(now) } },
+    });
+    if (issuedToday >= AUTH_POLICY.otpDailyCodes) return null;
     await db.otpCode.updateMany({
       where: { email: input.email, purpose: input.purpose, consumedAt: null },
       data: { consumedAt: now },
@@ -45,6 +64,7 @@ export class OtpService {
         expiresAt: new Date(now.getTime() + AUTH_POLICY.otpTtlMinutes * 60_000),
       },
     });
+    await this.attempts.add('issued', email, purpose, source);
     return { id: otp.id, code };
   }
 
@@ -62,10 +82,20 @@ export class OtpService {
   /**
    * Checks a code against the latest open code for the email and purpose (or a specific
    * challenge ID). Wrong codes use up an attempt; a correct code is consumed exactly once.
+   * Callers must let the transaction commit on failure (return, then throw), or the attempt is
+   * rolled back and never counts.
    */
   async verify(
     db: Db,
-    input: { email?: string; purpose: OtpPurpose; code: string; id?: string; userId?: string },
+    input: {
+      email?: string;
+      purpose: OtpPurpose;
+      code: string;
+      id?: string;
+      userId?: string;
+      /** The guessing client's address (RequestContext.ip). */
+      source: string | null;
+    },
     now = new Date(),
   ): Promise<OtpCheck> {
     const otp = await db.otpCode.findFirst({
@@ -82,9 +112,19 @@ export class OtpService {
     if (otp.expiresAt <= now) return { ok: false, reason: 'EXPIRED' };
     if (otp.attempts >= AUTH_POLICY.otpMaxAttempts)
       return { ok: false, reason: 'TOO_MANY_ATTEMPTS' };
+    const fromSource = await this.attempts.count('failed', otp.email, otp.purpose, input.source);
+    if (fromSource >= AUTH_POLICY.otpFailuresPerSource)
+      return { ok: false, reason: 'TOO_MANY_ATTEMPTS' };
+    const failedToday = await db.otpCode.aggregate({
+      where: { email: otp.email, purpose: otp.purpose, createdAt: { gt: dayBefore(now) } },
+      _sum: { attempts: true },
+    });
+    if ((failedToday._sum.attempts ?? 0) >= AUTH_POLICY.otpDailyFailures)
+      return { ok: false, reason: 'TOO_MANY_ATTEMPTS' };
 
     if (!this.crypto.safeEqual(otp.codeHash, this.crypto.keyedHash('otp', input.code))) {
       await db.otpCode.update({ where: { id: otp.id }, data: { attempts: { increment: 1 } } });
+      await this.attempts.add('failed', otp.email, otp.purpose, input.source);
       return {
         ok: false,
         reason: otp.attempts + 1 >= AUTH_POLICY.otpMaxAttempts ? 'TOO_MANY_ATTEMPTS' : 'INVALID',
@@ -98,3 +138,5 @@ export class OtpService {
     return consumed.count === 1 ? { ok: true, otp } : { ok: false, reason: 'INVALID' };
   }
 }
+
+const dayBefore = (now: Date) => new Date(now.getTime() - 86_400_000);
