@@ -200,6 +200,13 @@ Settled in the Phase 0 interview. Details are in docs/SPEC.md, docs/SERVICES.md 
   still revoke it. Password reset hashes only after the code is verified. Production refuses `COOKIE_SECURE=false`.
   Accepted: the small timing difference between unknown and known accounts on a failed sign-in (argon2 dominates).
   Follow-up: alert admins when a staff account is locked (the `AUTH_LOCKED` audit row exists).
+- **Code caps per address (auth re-review, 2026-10-21):** the email-code caps were per email and purpose only, so a
+  stranger could use up the owner's reset or verification codes for a day (5 requests or 10 wrong guesses). They now
+  count per email, purpose and client address first (5 codes, 10 wrong guesses; Redis, keyed by an HMAC so neither
+  email nor address is stored), with address-wide backstops of 20 codes and 30 wrong guesses (1 in 33,000 a day). A
+  stranger using many addresses can still reach the backstop; accepted, as for the FR-004 account lock. The refresh
+  grace is now used once, as stated above (`refresh_token.graceUsedAt`); a third use of the same token within 10 s
+  revokes the family. API 1.12.1.
 - **Concurrent registrations** of the same email answer 202 like any existing account instead of a 500.
 - **Launch check:** published service versions are immutable, so retired seeded test-fee versions remain in the table.
   Go-live requires that no live version has `feeIsTest = true`, that no application was assessed under one, and that no

@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { APP_CONFIG, type AppConfig } from '../config/config.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { CodeAttemptsService } from './code-attempts.service';
 import { LoginAttemptsService } from './login-attempts.service';
 import { OtpService } from './otp.service';
 import { PasswordService } from './password.service';
@@ -24,6 +25,7 @@ import { TokenService } from './token.service';
   controllers: [AuthController],
   providers: [
     AuthService,
+    CodeAttemptsService,
     LoginAttemptsService,
     PasswordService,
     OtpService,

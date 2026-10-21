@@ -96,7 +96,7 @@ export class CryptoService {
 }
 
 /** Domains for keyed hashes of short secrets (OTP codes) and device IDs. */
-export type KeyedHashDomain = 'otp' | 'device' | 'subject' | 'correction';
+export type KeyedHashDomain = 'otp' | 'device' | 'subject' | 'correction' | 'code-limit';
 
 function normalise(domain: 'nationalId' | 'phone', value: string): string {
   const trimmed = value.trim().toUpperCase();

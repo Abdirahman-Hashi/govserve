@@ -120,6 +120,8 @@ model RefreshToken {
   tokenHash     String    @unique
   expiresAt     DateTime  @db.Timestamptz(3)
   rotatedAt     DateTime? @db.Timestamptz(3)
+  // Set when a just-rotated token was presented once more within the grace period (two tabs).
+  graceUsedAt   DateTime? @db.Timestamptz(3)
   revokedAt     DateTime? @db.Timestamptz(3)
   revokedReason String?
   ip            String?

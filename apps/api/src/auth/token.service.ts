@@ -75,8 +75,8 @@ export class TokenService {
 
   /**
    * Exchanges a refresh token for a new one in the same family. Presenting a token that was
-   * revoked, or rotated more than refreshReuseGraceSeconds ago, is treated as theft: the whole
-   * family is revoked.
+   * revoked, rotated more than refreshReuseGraceSeconds ago, or already presented once within
+   * that grace period, is treated as theft: the whole family is revoked.
    */
   async rotate(
     db: Db,
@@ -94,21 +94,21 @@ export class TokenService {
       now.getTime() - rotatedAt.getTime() <= AUTH_POLICY.refreshReuseGraceSeconds * 1000;
     if (row.revokedAt) return reused();
     if (row.expiresAt <= now) return { status: 'INVALID' };
-    if (row.rotatedAt) {
-      // Another tab rotated it a moment ago: continue the same session instead of revoking it.
-      if (!inGrace(row.rotatedAt)) return reused();
-    } else {
-      // Conditional update: of two concurrent rotations with the same token, only one wins;
-      // the other is within the grace period by definition.
-      const claimed = await db.refreshToken.updateMany({
-        where: { id: row.id, rotatedAt: null, revokedAt: null },
-        data: { rotatedAt: now },
+    // Conditional updates: of concurrent requests with the same token, one rotates it and at most
+    // one more, within the grace period, continues the session; any other use is reuse.
+    const claimed = await db.refreshToken.updateMany({
+      where: { id: row.id, rotatedAt: null, revokedAt: null },
+      data: { rotatedAt: now },
+    });
+    if (claimed.count !== 1) {
+      const current = await db.refreshToken.findUnique({ where: { id: row.id } });
+      if (!current?.rotatedAt || current.revokedAt || !inGrace(current.rotatedAt)) return reused();
+      // Another tab rotated it a moment ago: continue the same session, but only once.
+      const graced = await db.refreshToken.updateMany({
+        where: { id: row.id, graceUsedAt: null, revokedAt: null },
+        data: { graceUsedAt: now },
       });
-      if (claimed.count !== 1) {
-        const current = await db.refreshToken.findUnique({ where: { id: row.id } });
-        if (!current?.rotatedAt || current.revokedAt || !inGrace(current.rotatedAt))
-          return reused();
-      }
+      if (graced.count !== 1) return reused();
     }
     const refresh = await this.issueRefresh(db, row.userId, ctx, row.familyId, now);
     return { status: 'OK', userId: row.userId, refresh };

@@ -12,10 +12,14 @@ export const AUTH_POLICY = {
   otpResendCooldownSeconds: 60,
   /**
    * Per email and purpose, over 24 h (ASVS 2.7/2.8): codes issued, and wrong guesses across all of
-   * them. Without these, asking for a new code every minute allowed endless guessing.
+   * them. Without these, asking for a new code every minute allowed endless guessing. Counted per
+   * source address first, so a stranger cannot use up the owner's codes; the address-wide caps
+   * are the backstop for guessing from many addresses (30 guesses a day: 1 in 33,000).
    */
-  otpDailyCodes: 5,
-  otpDailyFailures: 10,
+  otpCodesPerSource: 5,
+  otpFailuresPerSource: 10,
+  otpDailyCodes: 20,
+  otpDailyFailures: 30,
   /**
    * FR-004: 5 failures from one address block that address for the account; 20 from anywhere lock
    * the account itself (so a stranger cannot lock the owner out with a few guesses).

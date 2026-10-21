@@ -105,6 +105,7 @@ export class AuthService {
           email: user.email,
           purpose: 'VERIFY_EMAIL',
           userId: user.id,
+          source: ctx.ip,
         });
         return (
           issued && this.codeMessage(user.email, 'VERIFY_EMAIL_CODE', user.fullName, issued.code)
@@ -122,7 +123,12 @@ export class AuthService {
   /** Verifies the email and signs the citizen in. */
   async verifyEmail(email: string, code: string, ctx: RequestContext): Promise<IssuedSession> {
     const result = await this.prisma.$transaction(async (tx) => {
-      const check = await this.otp.verify(tx, { email, purpose: 'VERIFY_EMAIL', code });
+      const check = await this.otp.verify(tx, {
+        email,
+        purpose: 'VERIFY_EMAIL',
+        code,
+        source: ctx.ip,
+      });
       // Returned, not thrown: a wrong guess must commit so the attempt counts.
       if (!check.ok || !check.otp.userId) return { kind: 'failed' as const, failed: check };
       const updated = await tx.user.update({
@@ -143,12 +149,17 @@ export class AuthService {
     return this.startSession(result.user, ctx, { mfa: false });
   }
 
-  async resendVerification(email: string): Promise<void> {
+  async resendVerification(email: string, ctx: RequestContext): Promise<void> {
     const message = await this.prisma.$transaction(async (tx) => {
       const user = await tx.user.findUnique({ where: { email } });
       if (!user || user.emailVerifiedAt || user.status !== 'ACTIVE') return null;
       if (await this.otp.recentlyIssued(tx, email, 'VERIFY_EMAIL')) return null;
-      const issued = await this.otp.issue(tx, { email, purpose: 'VERIFY_EMAIL', userId: user.id });
+      const issued = await this.otp.issue(tx, {
+        email,
+        purpose: 'VERIFY_EMAIL',
+        userId: user.id,
+        source: ctx.ip,
+      });
       return issued && this.codeMessage(email, 'VERIFY_EMAIL_CODE', user.fullName, issued.code);
     });
     if (message) await this.send(message);
@@ -186,6 +197,7 @@ export class AuthService {
           this.otp.issue(tx, {
             email: user.email,
             purpose: 'STAFF_DEVICE',
+            source: ctx.ip,
             userId: user.id,
             contextHash: deviceIdHash,
           }),
@@ -236,7 +248,12 @@ export class AuthService {
           userId: null,
         };
       }
-      const check = await this.otp.verify(tx, { id: challengeId, purpose: 'STAFF_DEVICE', code });
+      const check = await this.otp.verify(tx, {
+        id: challengeId,
+        purpose: 'STAFF_DEVICE',
+        code,
+        source: ctx.ip,
+      });
       // Returned, not thrown, so the attempt commits; it also counts toward the account lockout.
       if (!check.ok || !check.otp.userId)
         return { kind: 'failed' as const, failed: check, userId: challenge.userId };
@@ -338,7 +355,7 @@ export class AuthService {
 
   // ─── Password reset (FR-005) ───────────────────────────────────────────────
 
-  async forgotPassword(email: string): Promise<void> {
+  async forgotPassword(email: string, ctx: RequestContext): Promise<void> {
     const message = await this.prisma.$transaction(async (tx) => {
       const user = await tx.user.findUnique({ where: { email } });
       if (!user || user.status === 'DEACTIVATED' || !user.passwordHash) return null;
@@ -347,6 +364,7 @@ export class AuthService {
         email,
         purpose: 'RESET_PASSWORD',
         userId: user.id,
+        source: ctx.ip,
       });
       return issued && this.codeMessage(email, 'RESET_PASSWORD_CODE', user.fullName, issued.code);
     });
@@ -360,6 +378,7 @@ export class AuthService {
         email: body.email,
         purpose: 'RESET_PASSWORD',
         code: body.code,
+        source: ctx.ip,
       });
       // Returned, not thrown: a wrong guess must commit so the attempt counts.
       if (!check.ok || !check.otp.userId) return { kind: 'failed' as const, failed: check };

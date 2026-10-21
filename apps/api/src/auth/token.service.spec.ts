@@ -12,6 +12,7 @@ function fakeDb() {
       const row = {
         id: `rt-${rows.length}`,
         rotatedAt: null,
+        graceUsedAt: null,
         revokedAt: null,
         revokedReason: null,
         ...data,
@@ -19,8 +20,10 @@ function fakeDb() {
       rows.push(row);
       return Promise.resolve(row);
     },
-    findUnique: ({ where }: { where: { tokenHash: string } }) =>
-      Promise.resolve(rows.find((r) => r.tokenHash === where.tokenHash) ?? null),
+    findUnique: ({ where }: { where: { tokenHash?: string; id?: string } }) =>
+      Promise.resolve(
+        rows.find((r) => r.tokenHash === where.tokenHash || r.id === where.id) ?? null,
+      ),
     updateMany: ({
       where,
       data,
@@ -85,6 +88,18 @@ describe('TokenService', () => {
     expect(again.status).toBe('OK');
     if (again.status === 'OK') expect(again.refresh.familyId).toBe(first.familyId);
     expect(rows.every((r) => r.revokedAt === null)).toBe(true);
+  });
+
+  it('should revoke the whole family when a just-rotated token comes a third time within the grace period', async () => {
+    const { db, rows } = fakeDb();
+    const t0 = new Date();
+    const first = await service.issueRefresh(db, 'user-1', ctx, undefined, t0);
+    await service.rotate(db, first.token, ctx, t0);
+    const tab2 = await service.rotate(db, first.token, ctx, new Date(t0.getTime() + 2_000));
+    expect(tab2.status).toBe('OK');
+    const thief = await service.rotate(db, first.token, ctx, new Date(t0.getTime() + 4_000));
+    expect(thief).toEqual({ status: 'REUSED', userId: 'user-1', familyId: first.familyId });
+    expect(rows.every((r) => r.revokedReason === 'REUSE_DETECTED')).toBe(true);
   });
 
   it('should reject an unknown or expired token', async () => {

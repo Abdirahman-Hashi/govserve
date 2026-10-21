@@ -1,7 +1,7 @@
 import { type OpenAPIObject } from '@nestjs/swagger';
 
 /** Semantic version of the API contract; URIs stay /api/v1. Bump with a note in docs/API_CHANGELOG.md. */
-export const API_VERSION = '1.12.0';
+export const API_VERSION = '1.12.1';
 
 type Json = Record<string, unknown>;
 const METHODS = ['get', 'post', 'put', 'patch', 'delete'] as const;

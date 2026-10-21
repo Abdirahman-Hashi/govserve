@@ -110,7 +110,7 @@ export class UsersService {
   }
 
   /** Sends a confirmation code to the new address (FR-010); the change happens on confirm. */
-  async requestEmailChange(caller: AuthUser, newEmail: string): Promise<void> {
+  async requestEmailChange(caller: AuthUser, newEmail: string, ctx: RequestContext): Promise<void> {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: caller.id } });
     if (user.email === newEmail) return;
     if (await this.prisma.user.findUnique({ where: { email: newEmail } })) {
@@ -120,7 +120,12 @@ export class UsersService {
       });
     }
     const issued = await this.prisma.$transaction((tx) =>
-      this.otp.issue(tx, { email: newEmail, purpose: 'CHANGE_EMAIL', userId: caller.id }),
+      this.otp.issue(tx, {
+        email: newEmail,
+        purpose: 'CHANGE_EMAIL',
+        userId: caller.id,
+        source: ctx.ip,
+      }),
     );
     if (!issued) {
       throw new HttpException(
@@ -140,7 +145,12 @@ export class UsersService {
 
   async confirmEmailChange(caller: AuthUser, code: string, ctx: RequestContext): Promise<Profile> {
     const failed = await this.prisma.$transaction(async (tx) => {
-      const check = await this.otp.verify(tx, { userId: caller.id, purpose: 'CHANGE_EMAIL', code });
+      const check = await this.otp.verify(tx, {
+        userId: caller.id,
+        purpose: 'CHANGE_EMAIL',
+        code,
+        source: ctx.ip,
+      });
       // Returned, not thrown: a wrong guess must commit so the attempt counts.
       if (!check.ok) return check.reason;
       try {

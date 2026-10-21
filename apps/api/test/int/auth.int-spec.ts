@@ -196,6 +196,19 @@ describe('Authentication (integration)', () => {
       expect(await actions(session.user.id)).not.toContain('AUTH_REFRESH_REUSE');
     });
 
+    it('should revoke the session when a just-rotated cookie is replayed a third time within the grace period', async () => {
+      const { session, jar } = await signUpCitizen(h);
+      const cookie = jar.header();
+      const refresh = () => request(h.http()).post(`${api}/auth/refresh`).set('Cookie', cookie);
+      expect((await refresh()).status).toBe(200);
+      expect((await refresh()).status).toBe(200); // the second tab: the one grace use
+      expect((await refresh()).status).toBe(401);
+      expect(
+        await h.prisma.refreshToken.count({ where: { userId: session.user.id, revokedAt: null } }),
+      ).toBe(0);
+      expect(await actions(session.user.id)).toContain('AUTH_REFRESH_REUSE');
+    });
+
     it('should reject refresh with 403 when the Origin is not the web app', async () => {
       const { jar } = await signUpCitizen(h);
       const res = await request(h.http())

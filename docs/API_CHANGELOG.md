@@ -4,6 +4,12 @@ The API is served under `/api/v1`. `info.version` in the OpenAPI document is the
 schema, example, role statement or error response needs a version bump and a note here. Then record it with
 `pnpm --filter api openapi:lock`; the contract test (`src/openapi-contract.spec.ts`) fails until you do.
 
+## 1.12.1 (2026-10-21, Phase 12)
+- Email code caps now count per client address first: 5 codes and 10 wrong guesses a day per email, purpose and
+  address, with 20 codes and 30 wrong guesses from all addresses as the backstop. A stranger can no longer use up the
+  owner's reset or verification codes for the day. The 429 `CODE_LIMIT` descriptions say so.
+- `POST /auth/refresh`: the 10-second grace for a just-rotated token is used once; a further replay revokes the session.
+
 ## 1.12.0 (2026-10-20, Phase 12)
 - Email codes are capped per address and purpose: 5 codes and 10 wrong guesses in 24 hours. Beyond that, codes are
   refused as `CODE_TOO_MANY_ATTEMPTS`; password reset and resend still answer 202 but send nothing.

@@ -81,13 +81,15 @@ export class UsersController {
   @ApiResponse({ status: 409, description: 'EMAIL_IN_USE' })
   @ApiResponse({
     status: 429,
-    description: 'RATE_LIMITED, or CODE_LIMIT: 5 codes were sent to this address today',
+    description:
+      'RATE_LIMITED, or CODE_LIMIT: 5 codes were sent for this email from this address today (20 in all)',
   })
   async changeEmail(
     @CurrentUser() user: AuthUser,
     @Body(new ZodPipe(ChangeEmailRequestSchema)) body: ChangeEmailRequest,
+    @ReqCtx() ctx: RequestContext,
   ): Promise<void> {
-    await this.users.requestEmailChange(user, body.newEmail);
+    await this.users.requestEmailChange(user, body.newEmail, ctx);
   }
 
   @Post('me/email/confirm')

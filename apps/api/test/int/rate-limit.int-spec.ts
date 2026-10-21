@@ -3,6 +3,7 @@ import request from 'supertest';
 import { type ErrorEnvelope } from '../../src/common/filters/error-envelope.filter';
 import {
   bearer,
+  codeFrom,
   type Harness,
   PASSWORD,
   send,
@@ -135,5 +136,52 @@ describe('Rate limits (integration, NFR-001)', () => {
         expect((await login(`198.51.100.${source + 20}`, 'wrong password!!')).status).toBe(401);
     expect((await h.prisma.user.findUniqueOrThrow({ where: { email } })).status).toBe('LOCKED');
     expect((await login('198.51.100.99', PASSWORD)).status).toBe(401);
+  });
+
+  describe('email codes per address (ASVS 2.7, 2.8)', () => {
+    const wrong = (code: string) => String((Number(code) + 1) % 1_000_000).padStart(6, '0');
+    /** Moves this email's codes two minutes back, past the one-a-minute resend cooldown. */
+    const pastCooldown = (email: string) =>
+      h.owner
+        .$executeRaw`UPDATE "otp_code" SET "createdAt" = "createdAt" - interval '2 minutes' WHERE "email" = ${email}`;
+    const forgot = (ip: string, email: string) =>
+      request(h.http())
+        .post('/api/v1/auth/password/forgot')
+        .set('X-Forwarded-For', ip)
+        .send({ email })
+        .expect(202);
+    const reset = (ip: string, email: string, code: string) =>
+      request(h.http())
+        .post('/api/v1/auth/password/reset')
+        .set('X-Forwarded-For', ip)
+        .send({ email, code, password: 'another long phrase 9' });
+
+    it('should let the owner reset from another address when a stranger used up the guesses from theirs', async () => {
+      const { email } = await signUpCitizen(h, uniqueEmail('codes'));
+      const stranger = '203.0.113.120';
+      for (let round = 0; round < 2; round++) {
+        await forgot(stranger, email);
+        const code = codeFrom(h.mail, email, 'RESET_PASSWORD_CODE');
+        for (let i = 0; i < 5; i++)
+          expect((await reset(stranger, email, wrong(code))).status).toBe(400);
+        await pastCooldown(email);
+      }
+      await forgot('203.0.113.121', email);
+      const code = codeFrom(h.mail, email, 'RESET_PASSWORD_CODE');
+      expect((await reset('203.0.113.121', email, code)).status).toBe(204);
+    });
+
+    it('should still send the owner a reset code when a stranger asked for five from their address', async () => {
+      const { email } = await signUpCitizen(h, uniqueEmail('codes'));
+      const sent = () =>
+        h.mail.sent.filter((m) => m.to === email && m.template === 'RESET_PASSWORD_CODE').length;
+      for (let i = 0; i < 6; i++) {
+        await forgot('203.0.113.130', email);
+        await pastCooldown(email);
+      }
+      expect(sent()).toBe(5);
+      await forgot('203.0.113.131', email);
+      expect(sent()).toBe(6);
+    });
   });
 });
